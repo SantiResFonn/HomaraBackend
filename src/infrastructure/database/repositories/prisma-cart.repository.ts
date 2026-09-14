@@ -20,20 +20,18 @@ export class PrismaCartRepository implements ICartRepository {
       }
     });
 
-    if (!cart) {
-      cart = await this.db.cart.create({
-        data: { userId },
-        include: {
-          items: {
-            include: {
-              product: {
-                include: { category: true, tags: true }
-              }
+    cart ??= await this.db.cart.create({
+      data: { userId },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: { category: true, tags: true }
             }
           }
         }
-      });
-    }
+      }
+    });
 
     return new Cart(
       cart.id,

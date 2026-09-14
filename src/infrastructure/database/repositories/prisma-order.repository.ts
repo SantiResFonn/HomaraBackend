@@ -1,5 +1,5 @@
 import { IOrderRepository } from "../../../domain/repositories/order-repository.interface.js";
-import { Order, OrderItem } from "../../../domain/entities/order.js";
+import { Order, OrderItem, OrderStatus } from "../../../domain/entities/order.js";
 import { Product } from "../../../domain/entities/product.js";
 import { prisma } from "../prisma-client.js";
 import { Prisma } from "../../../generated/prisma/client.js";
@@ -38,7 +38,7 @@ export class PrismaOrderRepository implements IOrderRepository {
     return new Order(
       o.id,
       o.orderNumber,
-      o.status as "PENDIENTE" | "PROCESANDO" | "ENVIADO" | "ENTREGADO" | "CANCELADO",
+      o.status as OrderStatus,
       o.subtotal,
       o.shippingCost,
       o.total,

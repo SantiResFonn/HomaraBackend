@@ -14,11 +14,13 @@ export class OrderItem {
   ) {}
 }
 
+export type OrderStatus = "PENDIENTE" | "PROCESANDO" | "ENVIADO" | "ENTREGADO" | "CANCELADO";
+
 export class Order {
   constructor(
     public readonly id: string,
     public readonly orderNumber: string,
-    public readonly status: "PENDIENTE" | "PROCESANDO" | "ENVIADO" | "ENTREGADO" | "CANCELADO",
+    public readonly status: OrderStatus,
     public readonly subtotal: number,
     public readonly shippingCost: number,
     public readonly total: number,

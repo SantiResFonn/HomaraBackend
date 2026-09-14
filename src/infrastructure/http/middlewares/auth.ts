@@ -45,7 +45,7 @@ function toRequestUser(user: {
 }
 
 function extractToken(authHeader: string | undefined): string {
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     throw new AppError("Token no provisto.", 401);
   }
   return authHeader.split(" ")[1];
