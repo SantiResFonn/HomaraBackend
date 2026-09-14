@@ -330,7 +330,7 @@ function calculateTools(
   selectedProduct: CalculatorParams["selectedProduct"],
   isTile: boolean
 ): CalculatedMaterial[] {
-  if (materialType === "pintura" || (selectedProduct && selectedProduct.unit === "galón")) {
+  if (materialType === "pintura" || selectedProduct?.unit === "galón") {
     return [
       {
         name: "Kit Rodillo Antigoteo Profesional 23cm",
@@ -394,6 +394,143 @@ function calculateTools(
   return toolList;
 }
 
+const CONSTRUCTION_KEYWORDS = [
+  "pegante",
+  "cemento",
+  "adhesivo",
+  "mortero",
+  "yeso",
+  "cal",
+  "boquilla",
+];
+
+const PEGANTE_KEYWORDS = [
+  "pegante",
+  "cemento",
+  "adhesivo",
+  "mortero",
+  "yeso",
+  "cal",
+];
+
+function identifyProductTypes(selectedProduct: CalculatorParams["selectedProduct"]) {
+  if (!selectedProduct) {
+    return {
+      isConstructionMaterial: false,
+      isPeganteProduct: false,
+      isBoquillaProduct: false,
+    };
+  }
+
+  const nameLower = selectedProduct.name.toLowerCase();
+  const hasKeyword = (keywords: string[]) => keywords.some((kw) => nameLower.includes(kw));
+
+  return {
+    isConstructionMaterial: hasKeyword(CONSTRUCTION_KEYWORDS),
+    isPeganteProduct: hasKeyword(PEGANTE_KEYWORDS),
+    isBoquillaProduct: nameLower.includes("boquilla"),
+  };
+}
+
+function calculateNetArea(
+  area: number,
+  deductDoors = 0,
+  deductWindows = 0,
+  customSubtractions = 0
+): number {
+  const doorsDeduction = deductDoors * 2.0;
+  const windowsDeduction = deductWindows * 1.5;
+  const totalDeductions = doorsDeduction + windowsDeduction + customSubtractions;
+  return Math.max(0.1, area - totalDeductions);
+}
+
+function calculateAdditionalFloorSupplies(
+  materialType: string,
+  selectedProduct: CalculatorParams["selectedProduct"],
+  netArea: number,
+  includeAdhesive: boolean
+): CalculatedMaterial[] {
+  if (!includeAdhesive) {
+    return [];
+  }
+
+  const supplies: CalculatedMaterial[] = [];
+  const nameLower = selectedProduct?.name.toLowerCase() ?? "";
+  const isWood = materialType === "madera" || nameLower.includes("madera");
+  const isVinyl = materialType === "vinilo" || nameLower.includes("vinilo");
+
+  if (isWood) {
+    const rollos = Math.ceil(netArea / 20);
+    supplies.push({
+      name: "Cinta underlayment",
+      quantity: `${rollos} rollos`,
+      note: "20m² c/u (Aislamiento acústico y de humedad)",
+      icon: "📏",
+      price: PRICES.cinta * rollos,
+      productId: null,
+    });
+  }
+
+  if (isVinyl) {
+    const galones = Math.ceil(netArea / 15);
+    supplies.push({
+      name: "Primer para vinilo",
+      quantity: `${galones} galones`,
+      note: "15m² c/u (Adherencia óptima)",
+      icon: "🪣",
+      price: PRICES.primer * galones,
+      productId: null,
+    });
+  }
+
+  return supplies;
+}
+
+function calculateIntegralWallMaterials(
+  type: string,
+  materialType: string,
+  tileFormat: string,
+  netArea: number,
+  wasteMultiplier: number,
+  actualWastePercent: number,
+  selectedProduct: CalculatorParams["selectedProduct"]
+): CalculatedMaterial[] {
+  if (type.toLowerCase() !== "integral" || materialType === "pintura") {
+    return [];
+  }
+
+  const wallArea = Math.ceil(Number((netArea * 0.6).toFixed(4)));
+  const wallTotal = Math.ceil(Number((wallArea * wasteMultiplier).toFixed(4)));
+
+  if (selectedProduct) {
+    return [
+      {
+        name: `${selectedProduct.name} Pared`.trim(),
+        quantity: `${wallTotal} m²`,
+        note: `Paredes estimadas (+${actualWastePercent}% desperdicio)`,
+        icon: "🧱",
+        price: selectedProduct.price * wallTotal,
+        productId: selectedProduct.id,
+      },
+    ];
+  }
+
+  const matName = MATERIAL_NAMES[materialType] || "Cerámica";
+  const formatLabel = FORMAT_LABELS[tileFormat] || tileFormat;
+  const pricePerM2 = TILE_PRICES[materialType]?.[tileFormat] || TILE_PRICES.ceramica["60x60"];
+
+  return [
+    {
+      name: `${matName} Pared ${formatLabel}`.trim(),
+      quantity: `${wallTotal} m²`,
+      note: `Paredes estimadas (+${actualWastePercent}% desperdicio)`,
+      icon: "🧱",
+      price: pricePerM2 * wallTotal,
+      productId: null,
+    },
+  ];
+}
+
 export function calculateMaterials({
   type,
   area,
@@ -413,10 +550,7 @@ export function calculateMaterials({
   const materials: CalculatedMaterial[] = [];
 
   // 1. Cálculo del Área Neta considerando deducciones
-  const doorsDeduction = deductDoors * 2.0;
-  const windowsDeduction = deductWindows * 1.5;
-  const totalDeductions = doorsDeduction + windowsDeduction + customSubtractions;
-  const netArea = Math.max(0.1, area - totalDeductions);
+  const netArea = calculateNetArea(area, deductDoors, deductWindows, customSubtractions);
 
   // 2. Cálculo de Desperdicio
   const actualWastePercent = getEffectiveWastePercent(wastePercent, materialType, layingPattern);
@@ -424,31 +558,7 @@ export function calculateMaterials({
   const totalArea = Math.ceil(Number((netArea * wasteMultiplier).toFixed(4)));
 
   // 3. Identificación de producto
-  const nameLower = selectedProduct ? selectedProduct.name.toLowerCase() : "";
-  const isConstructionMaterial = Boolean(
-    selectedProduct && (
-      nameLower.includes("pegante") ||
-      nameLower.includes("cemento") ||
-      nameLower.includes("adhesivo") ||
-      nameLower.includes("mortero") ||
-      nameLower.includes("yeso") ||
-      nameLower.includes("cal") ||
-      nameLower.includes("boquilla")
-    )
-  );
-
-  const isPeganteProduct = Boolean(
-    selectedProduct && (
-      nameLower.includes("pegante") ||
-      nameLower.includes("cemento") ||
-      nameLower.includes("adhesivo") ||
-      nameLower.includes("mortero") ||
-      nameLower.includes("yeso") ||
-      nameLower.includes("cal")
-    )
-  );
-
-  const isBoquillaProduct = Boolean(selectedProduct && nameLower.includes("boquilla"));
+  const { isConstructionMaterial, isPeganteProduct, isBoquillaProduct } = identifyProductTypes(selectedProduct);
 
   // 4. Material de revestimiento principal
   materials.push(
@@ -463,54 +573,18 @@ export function calculateMaterials({
     );
   }
 
-  // 6. Insumos para Madera laminada
-  if ((materialType === "madera" || selectedProduct?.name.toLowerCase().includes("madera")) && includeAdhesive) {
-    const rollos = Math.ceil(netArea / 20);
-    materials.push({
-      name: "Cinta underlayment",
-      quantity: `${rollos} rollos`,
-      note: "20m² c/u (Aislamiento acústico y de humedad)",
-      icon: "📏",
-      price: PRICES.cinta * rollos,
-      productId: null,
-    });
-  }
+  // 6. Insumos para Madera laminada y Vinilo
+  materials.push(...calculateAdditionalFloorSupplies(materialType, selectedProduct, netArea, includeAdhesive));
 
-  // 7. Insumos para Vinilo
-  if ((materialType === "vinilo" || selectedProduct?.name.toLowerCase().includes("vinilo")) && includeAdhesive) {
-    const galones = Math.ceil(netArea / 15);
-    materials.push({
-      name: "Primer para vinilo",
-      quantity: `${galones} galones`,
-      note: "15m² c/u (Adherencia óptima)",
-      icon: "🪣",
-      price: PRICES.primer * galones,
-      productId: null,
-    });
-  }
-
-  // 8. Herramientas
+  // 7. Herramientas
   if (includeTools) {
     materials.push(...calculateTools(materialType, selectedProduct, isTile));
   }
 
-  // 9. Estimación de paredes si es de tipo integral y no es pintura pura
-  if (type.toLowerCase() === "integral" && materialType !== "pintura") {
-    const wallArea = Math.ceil(Number((netArea * 0.6).toFixed(4)));
-    const wallTotal = Math.ceil(Number((wallArea * wasteMultiplier).toFixed(4)));
-    const matName = selectedProduct ? selectedProduct.name : (MATERIAL_NAMES[materialType] || "Cerámica");
-    const formatLabel = selectedProduct ? "" : (FORMAT_LABELS[tileFormat] || tileFormat);
-    const pricePerM2 = selectedProduct ? selectedProduct.price : (TILE_PRICES[materialType]?.[tileFormat] || TILE_PRICES.ceramica["60x60"]);
-
-    materials.push({
-      name: `${matName} Pared ${formatLabel}`.trim(),
-      quantity: `${wallTotal} m²`,
-      note: `Paredes estimadas (+${actualWastePercent}% desperdicio)`,
-      icon: "🧱",
-      price: pricePerM2 * wallTotal,
-      productId: selectedProduct ? selectedProduct.id : null,
-    });
-  }
+  // 8. Estimación de paredes si es de tipo integral y no es pintura pura
+  materials.push(
+    ...calculateIntegralWallMaterials(type, materialType, tileFormat, netArea, wasteMultiplier, actualWastePercent, selectedProduct)
+  );
 
   return materials;
 }
