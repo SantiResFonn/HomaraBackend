@@ -10,7 +10,7 @@
     "seed": "tsx prisma/seed.ts",
     "build": "npm run prisma:generate && tsc",
     "test": "tsx tests/run-all.ts",
-    "test:coverage": "npm run prisma:generate && c8 --all --src src --exclude \"src/generated/**\" --exclude \"src/domain/repositories/**\" --exclude \"src/infrastructure/entrypoints/**\" --exclude \"src/infrastructure/config/**\" --exclude tests --exclude prisma --exclude dist --reporter=text --reporter=lcov npm test"
+    "test:coverage": "npm run prisma:generate && c8 --all --src src --exclude \"src/generated/**\" --exclude \"src/domain/repositories/**\" --exclude \"src/infrastructure/entrypoints/**\" --exclude tests --exclude prisma --exclude dist --reporter=text --reporter=lcov npm test"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
