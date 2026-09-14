@@ -25,6 +25,7 @@ import "./unit-entities.js";
 import "./unit-auth-middleware.js";
 import "./unit-controllers.js";
 import "./unit-prisma-repositories.js";
+import "./unit-routes-and-server.js";
 
 import { run } from "./harness.js";
 

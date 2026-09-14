@@ -5,6 +5,7 @@ import { OrderController, setOrderRepositoriesForTests } from "../src/infrastruc
 import { ProjectController, setProjectRepositoriesForTests } from "../src/infrastructure/http/controllers/project.controller.js";
 import { CatalogController, setCatalogRepositoriesForTests } from "../src/infrastructure/http/controllers/catalog.controller.js";
 import { AuthController, setAuthRepositoryForTests } from "../src/infrastructure/http/controllers/auth.controller.js";
+import { AdminController, setPrismaClientForTests as setAdminPrismaForTests } from "../src/infrastructure/http/controllers/admin.controller.js";
 import { AppError } from "../src/shared/errors/AppError.js";
 
 // ============================================================================
@@ -601,6 +602,37 @@ test("UNIT-CTRL-CAT-03", "CatalogController CRUD productos y reseñas de catálo
   ctxDelErr.req.params = { id: "prd-1" };
   await CatalogController.deleteProduct(ctxDelErr.req, ctxDelErr.res, ctxDelErr.next);
   is(ctxDelErr.next.calls.length, 1);
+
+  // Delega errores en createReview
+  fakeReviewRepo.findByUserAndProduct.rejects(new Error("Rev err"));
+  const ctxRevErr = contextoExpress();
+  ctxRevErr.req.params = { id: "prd-1" };
+  ctxRevErr.req.user = { id: "usr-1" };
+  ctxRevErr.req.body = { rating: 5 };
+  await CatalogController.createReview(ctxRevErr.req, ctxRevErr.res, ctxRevErr.next);
+  is(ctxRevErr.next.calls.length, 1);
+
+  // Delega errores en getProductReviews
+  fakeReviewRepo.findByProductId.rejects(new Error("Rev list err"));
+  const ctxRevListErr = contextoExpress();
+  ctxRevListErr.req.params = { id: "prd-1" };
+  await CatalogController.getProductReviews(ctxRevListErr.req, ctxRevListErr.res, ctxRevListErr.next);
+  is(ctxRevListErr.next.calls.length, 1);
+
+  // Delega errores en createProduct
+  fakeProductRepo.create.rejects(new Error("Create prod err"));
+  const ctxProdCreateErr = contextoExpress();
+  ctxProdCreateErr.req.body = { name: "Nuevo" };
+  await CatalogController.createProduct(ctxProdCreateErr.req, ctxProdCreateErr.res, ctxProdCreateErr.next);
+  is(ctxProdCreateErr.next.calls.length, 1);
+
+  // Delega errores en updateProduct
+  fakeProductRepo.update.rejects(new Error("Update prod err"));
+  const ctxProdUpdErr = contextoExpress();
+  ctxProdUpdErr.req.params = { id: "prd-1" };
+  ctxProdUpdErr.req.body = { name: "Modificado" };
+  await CatalogController.updateProduct(ctxProdUpdErr.req, ctxProdUpdErr.res, ctxProdUpdErr.next);
+  is(ctxProdUpdErr.next.calls.length, 1);
 });
 
 // ============================================================================
@@ -711,4 +743,86 @@ test("UNIT-CTRL-AUTH-03", "AuthController.update restringe acceso y actualiza ca
   ctxPass.req.body = { password: "NewPassword123" };
   await AuthController.update(ctxPass.req, ctxPass.res, ctxPass.next);
   is(ctxPass.res.body.success, true);
+});
+
+// ============================================================================
+// AdminController Tests
+// ============================================================================
+
+test("UNIT-CTRL-ADM-01", "AdminController.getMetrics calcula métricas y delega errores a next", async () => {
+  const fakeDb = {
+    order: {
+      findMany: spy()
+        .resolvesOnce([{ total: 100000, status: "ENTREGADO" }])
+        .resolvesOnce([{ total: 80000, status: "ENTREGADO" }])
+        .resolvesOnce([
+          { total: 100000, createdAt: new Date() }
+        ]),
+      count: spy(async () => 5)
+    },
+    orderItem: {
+      findMany: spy(async () => [
+        { total: 50000, product: { category: { name: "Pisos" } } }
+      ])
+    },
+    product: {
+      count: spy(async () => 40)
+    },
+    user: {
+      count: spy(async () => 12)
+    }
+  };
+
+  setAdminPrismaForTests(fakeDb);
+
+  // Success
+  const ctx = contextoExpress();
+  await AdminController.getMetrics(ctx.req, ctx.res, ctx.next);
+  is(ctx.res.body.success, true);
+  is(Array.isArray(ctx.res.body.data), true);
+  is(ctx.res.body.data[0].label, "Ventas del Mes");
+  is(ctx.res.body.data[1].label, "Pedidos Activos");
+  is(ctx.res.body.charts.topCategories.length, 1);
+  is(ctx.next.calls.length, 0);
+
+  // Error delegation
+  fakeDb.order.findMany.rejects(new Error("Metrics DB Err"));
+  const ctxErr = contextoExpress();
+  await AdminController.getMetrics(ctxErr.req, ctxErr.res, ctxErr.next);
+  is(ctxErr.next.calls.length, 1);
+  is(ctxErr.next.calls[0][0].message, "Metrics DB Err");
+});
+
+test("UNIT-CTRL-ADM-02", "AdminController.getInventoryReport genera estadísticas de inventario y delega errores", async () => {
+  const fakeDb = {
+    product: {
+      findMany: spy(async () => [
+        { id: "p1", name: "Piso", category: { name: "Pisos" }, stockQuantity: 60, unit: "m²", price: 50000, inStock: true },
+        { id: "p2", name: "Pintura", category: { name: "Pinturas" }, stockQuantity: 20, unit: "galon", price: 30000, inStock: true },
+        { id: "p3", name: "Tornillos", category: { name: "Fijaciones" }, stockQuantity: 0, unit: "caja", price: 5000, inStock: false },
+        { id: "p4", name: "Defectuoso", category: { name: "Varios" }, stockQuantity: -2, unit: "u", price: 1000, inStock: false },
+      ])
+    }
+  };
+
+  setAdminPrismaForTests(fakeDb);
+
+  // Success
+  const ctx = contextoExpress();
+  await AdminController.getInventoryReport(ctx.req, ctx.res, ctx.next);
+  is(ctx.res.body.success, true);
+  const stats = ctx.res.body.data.stats;
+  is(stats.totalProducts, 4);
+  is(stats.totalUnits, 78);
+  is(stats.lowStockCount, 1);
+  is(stats.outOfStockCount, 1);
+  is(stats.negativeStockCount, 1);
+  is(ctx.next.calls.length, 0);
+
+  // Error delegation
+  fakeDb.product.findMany.rejects(new Error("Inventory DB Err"));
+  const ctxErr = contextoExpress();
+  await AdminController.getInventoryReport(ctxErr.req, ctxErr.res, ctxErr.next);
+  is(ctxErr.next.calls.length, 1);
+  is(ctxErr.next.calls[0][0].message, "Inventory DB Err");
 });
