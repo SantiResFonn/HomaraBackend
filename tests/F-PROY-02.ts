@@ -216,13 +216,12 @@ test("CP-F-PROY-02-08", "Asigna baldosa genérica y calcula pegante vinculado po
   };
   const peganteVinculado = { id: "prd-peg-10", name: "Pegante Blanco Porcelanato 10kg", price: 21_500, unit: "bultos" };
   const revestimientoVinculado = { id: "prd-cal", name: "Porcelanato Calacatta Gold 60x60", price: 71_000, unit: "m²" };
-
-  // Arrange
-  const entrada = { ...base, selectedProduct: peganteVinculado };
+  const conPegante = { ...base, selectedProduct: peganteVinculado };
+  const conRevestimiento = { ...base, selectedProduct: revestimientoVinculado };
 
   // Act
-  const materiales = calculateMaterials(entrada);
-  const calacatta = calculateMaterials({ ...base, selectedProduct: revestimientoVinculado });
+  const materiales = calculateMaterials(conPegante);
+  const calacatta = calculateMaterials(conRevestimiento);
 
   // Assert
   const ceramica = buscar(materiales, "Cerámica 30x30 cm")!;

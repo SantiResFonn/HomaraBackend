@@ -67,7 +67,8 @@ test("UNIT-SRV-02", "Middleware de reescritura /api -> /api/v1 funciona correcta
   // Se busca esa capa anónima, anterior al router v1.
   const stack = obtenerServerStack();
   const rewriteLayer = stack.find((layer: any) => layer.name === "<anonymous>" && typeof layer.handle === "function");
-  ok(rewriteLayer, "El middleware de reescritura de /api debe existir en la pila"); // precondición
+  // Falla de montaje, no aserción: sin esa capa el caso no tiene qué ejercitar.
+  if (!rewriteLayer) throw new Error("No se encontró el middleware de reescritura de /api en la pila");
   const middleware = rewriteLayer.handle;
 
   const req1: any = { url: "/categories" };   // sin /v1
