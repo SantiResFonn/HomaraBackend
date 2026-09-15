@@ -38,31 +38,7 @@ export class PrismaCartRepository implements ICartRepository {
       cart.userId,
       cart.createdAt,
       cart.updatedAt,
-      cart.items.map((item) => new CartItem(
-        item.id,
-        item.quantity,
-        item.cartId,
-        item.productId,
-        new Product(
-          item.product.id,
-          item.product.name,
-          item.product.description,
-          item.product.price,
-          item.product.originalPrice,
-          item.product.image,
-          item.product.rating,
-          item.product.reviewCount,
-          item.product.inStock,
-          item.product.stockQuantity,
-          item.product.unit,
-          item.product.categoryId,
-          item.product.createdAt,
-          item.product.updatedAt,
-          item.product.tags.map((t) => t.name)
-        ),
-        item.createdAt,
-        item.updatedAt
-      ))
+      cart.items.map((item) => this.mapToCartItem(item))
     );
   }
 
@@ -87,30 +63,7 @@ export class PrismaCartRepository implements ICartRepository {
       });
     }
 
-    return new CartItem(
-      item.id,
-      item.quantity,
-      item.cartId,
-      item.productId,
-      new Product(
-        item.product.id,
-        item.product.name,
-        item.product.description,
-        item.product.price,
-        item.product.originalPrice,
-        item.product.image,
-        item.product.rating,
-        item.product.reviewCount,
-        item.product.inStock,
-        item.product.stockQuantity,
-        item.product.unit,
-        item.product.categoryId,
-        item.product.createdAt,
-        item.product.updatedAt
-      ),
-      item.createdAt,
-      item.updatedAt
-    );
+    return this.mapToCartItem(item);
   }
 
   async updateItemQuantity(itemId: string, quantity: number): Promise<CartItem> {
@@ -120,6 +73,14 @@ export class PrismaCartRepository implements ICartRepository {
       include: { product: true }
     });
 
+    return this.mapToCartItem(item);
+  }
+
+  private mapToCartItem(item: any): CartItem {
+    const tags = Array.isArray(item.product.tags)
+      ? item.product.tags.map((t: any) => (typeof t === "string" ? t : t.name))
+      : undefined;
+
     return new CartItem(
       item.id,
       item.quantity,
@@ -139,7 +100,8 @@ export class PrismaCartRepository implements ICartRepository {
         item.product.unit,
         item.product.categoryId,
         item.product.createdAt,
-        item.product.updatedAt
+        item.product.updatedAt,
+        tags
       ),
       item.createdAt,
       item.updatedAt
