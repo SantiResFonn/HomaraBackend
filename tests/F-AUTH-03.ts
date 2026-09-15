@@ -130,3 +130,18 @@ test("CP-F-AUTH-03-04b", "Valida el rol real de base de datos ignorando el paylo
   // Assert
   is(errorDeNext(next).statusCode, 403);
 });
+
+
+test("CP-F-AUTH-03-07", "Cerrar sesión (RF03): La API deniega el acceso si el cliente elimina su token localmente (simulado por ausencia de header)", async () => {
+  // Arrange - el cliente hizo logout borrando el token de localStorage
+  const { req, res, next } = contextoExpress();
+  delete req.headers.authorization;
+
+  // Act
+  await requireAuth(req, res, next);
+
+  // Assert
+  const error = errorDeNext(next);
+  is(error.statusCode, 401);
+  is(error.message, "Token no provisto.");
+});

@@ -177,3 +177,28 @@ test("CP-F-CHK-01-05", "Agrega una nueva lÃ­nea de producto cuando no estaba en 
   is(item.quantity, 1);
   is(item.product?.id, ID_PRODUCTO);
 });
+
+
+test("CP-F-CHK-01-06", "Enviar materiales carrito (RF24): Permite iterar la adición para trasladar una lista de materiales al carrito", async () => {
+  // Arrange
+  const { db, caso } = montar();
+  db.cart.findUnique.mockResolvedValue(filaCarrito());
+  db.cartItem.findUnique.mockResolvedValue(null);
+  db.cartItem.create.mockImplementation((args: any) => filaLinea({ id: "ci_mock", quantity: args.data.quantity, product: filaProducto() }));
+
+  // Act - Simulamos un loop del frontend agregando varios materiales (RF24)
+  const materiales = [
+    { productId: "prd_1", quantity: 5 },
+    { productId: "prd_2", quantity: 2 },
+  ];
+  
+  for (const mat of materiales) {
+    await caso.execute(ID_USUARIO, mat.productId, mat.quantity);
+  }
+
+  // Assert
+  is(db.cartItem.create.mock.calls.length, 2);
+  is(db.cartItem.create.mock.calls[0][0].data.productId, "prd_1");
+  is(db.cartItem.create.mock.calls[1][0].data.productId, "prd_2");
+});
+
