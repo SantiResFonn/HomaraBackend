@@ -8,28 +8,14 @@ import { IOrderRepository } from "../../../domain/repositories/order-repository.
 import { ICartRepository } from "../../../domain/repositories/cart-repository.interface.js";
 import { IProductRepository } from "../../../domain/repositories/product-repository.interface.js";
 
-let orderRepository: IOrderRepository = new PrismaOrderRepository();
-let cartRepository: ICartRepository = new PrismaCartRepository();
-let productRepository: IProductRepository = new PrismaProductRepository();
+const orderRepository: IOrderRepository = new PrismaOrderRepository();
+const cartRepository: ICartRepository = new PrismaCartRepository();
+const productRepository: IProductRepository = new PrismaProductRepository();
 
-let listOrdersUseCase = new ListOrdersUseCase(orderRepository);
-let getOrderDetailUseCase = new GetOrderDetailUseCase(orderRepository);
-let createOrderUseCase = new CreateOrderUseCase(orderRepository, cartRepository, productRepository);
-let updateOrderStatusUseCase = new UpdateOrderStatusUseCase(orderRepository);
-
-export function setOrderRepositoriesForTests(repos: {
-  orderRepo?: IOrderRepository;
-  cartRepo?: ICartRepository;
-  productRepo?: IProductRepository;
-}) {
-  if (repos.orderRepo) orderRepository = repos.orderRepo;
-  if (repos.cartRepo) cartRepository = repos.cartRepo;
-  if (repos.productRepo) productRepository = repos.productRepo;
-  listOrdersUseCase = new ListOrdersUseCase(orderRepository);
-  getOrderDetailUseCase = new GetOrderDetailUseCase(orderRepository);
-  createOrderUseCase = new CreateOrderUseCase(orderRepository, cartRepository, productRepository);
-  updateOrderStatusUseCase = new UpdateOrderStatusUseCase(orderRepository);
-}
+const listOrdersUseCase = new ListOrdersUseCase(orderRepository);
+const getOrderDetailUseCase = new GetOrderDetailUseCase(orderRepository);
+const createOrderUseCase = new CreateOrderUseCase(orderRepository, cartRepository, productRepository);
+const updateOrderStatusUseCase = new UpdateOrderStatusUseCase(orderRepository);
 
 export class OrderController {
   static async list(req: Request, res: Response, next: NextFunction) {

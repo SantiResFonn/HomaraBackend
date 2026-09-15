@@ -4,20 +4,12 @@ import { GetCartUseCase, AddCartItemUseCase, UpdateCartItemQuantityUseCase, Remo
 
 import { ICartRepository } from "../../../domain/repositories/cart-repository.interface.js";
 
-let cartRepository: ICartRepository = new PrismaCartRepository();
+const cartRepository: ICartRepository = new PrismaCartRepository();
 
-let getCartUseCase = new GetCartUseCase(cartRepository);
-let addCartItemUseCase = new AddCartItemUseCase(cartRepository);
-let updateCartItemQuantityUseCase = new UpdateCartItemQuantityUseCase(cartRepository);
-let removeCartItemUseCase = new RemoveCartItemUseCase(cartRepository);
-
-export function setCartRepositoryForTests(repo: ICartRepository) {
-  cartRepository = repo;
-  getCartUseCase = new GetCartUseCase(cartRepository);
-  addCartItemUseCase = new AddCartItemUseCase(cartRepository);
-  updateCartItemQuantityUseCase = new UpdateCartItemQuantityUseCase(cartRepository);
-  removeCartItemUseCase = new RemoveCartItemUseCase(cartRepository);
-}
+const getCartUseCase = new GetCartUseCase(cartRepository);
+const addCartItemUseCase = new AddCartItemUseCase(cartRepository);
+const updateCartItemQuantityUseCase = new UpdateCartItemQuantityUseCase(cartRepository);
+const removeCartItemUseCase = new RemoveCartItemUseCase(cartRepository);
 
 export class CartController {
   static async get(req: Request, res: Response, next: NextFunction) {

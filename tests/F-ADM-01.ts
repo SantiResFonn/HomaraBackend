@@ -1,44 +1,50 @@
 // F-ADM-01 · Tablero de indicadores
 // Unidad: AdminController.getMetrics()  (GET /api/v1/admin/metrics)
 
-import { test, is, eq, ok } from "./harness.js";
-import {
-  fakePrismaAdmin,
-  contextoExpress,
-  ordenEntregada,
-  itemVendido,
-  programarOrdenes,
-  neverCalled,
-} from "./helpers.js";
-import { AdminController, setPrismaClientForTests } from "../src/infrastructure/http/controllers/admin.controller.js";
+import { vi, beforeEach } from "vitest";
+import { test, is, eq, expect } from "./harness.js";
+import { contextoExpress, ordenEntregada, itemVendido, programarOrdenes } from "./helpers.js";
+import { mockPrisma, reiniciarRepositorios } from "./mocks/repositorios.js";
+import { AdminController } from "../src/infrastructure/http/controllers/admin.controller.js";
+
+// El controlador captura `prisma` al importarse: se mockea el módulo del
+// cliente para que devuelva el doble compartido.
+vi.mock("../src/infrastructure/database/prisma-client.js", async () => {
+  const { mockPrisma } = await import("./mocks/repositorios.js");
+  return { prisma: mockPrisma };
+});
+
+beforeEach(reiniciarRepositorios);
+
 
 const ANIO = new Date().getFullYear();
 
-/** Cliente Prisma falso con contadores por defecto, ya instalado en el controlador. */
+/** Programa los contadores por defecto del cliente Prisma mockeado. */
 function montar() {
-  const p = fakePrismaAdmin();
-  p.order.count.resolves(7);
-  p.product.count.resolves(42);
-  p.user.count.resolves(5);
-  p.orderItem.findMany.resolves([]);
-  setPrismaClientForTests(p);
-  return p;
+  mockPrisma.order.count.mockResolvedValue(7);
+  mockPrisma.product.count.mockResolvedValue(42);
+  mockPrisma.user.count.mockResolvedValue(5);
+  mockPrisma.orderItem.findMany.mockResolvedValue([]);
+  return mockPrisma;
 }
 
 test("CP-F-ADM-01-01", "Calcula variación de ventas respecto al mes anterior y categorías principales", async () => {
+  // Arrange
   const p = montar();
   programarOrdenes(p, {
     actual: [ordenEntregada({ total: 150000 })],
     anterior: [ordenEntregada({ total: 100000 })],
     anio: [ordenEntregada({ total: 150000, createdAt: new Date(ANIO, 7, 10) })],
   });
-  p.orderItem.findMany.resolves([itemVendido(150000, "Pisos y Ceramicas")]);
-
+  p.orderItem.findMany.mockResolvedValue([itemVendido(150000, "Pisos y Ceramicas")]);
   const { req, res, next } = contextoExpress();
+
+  // Act
   await AdminController.getMetrics(req, res, next);
 
+  // Assert
   const cuerpo = res.body;
-  ok(neverCalled(next));
+  expect(next).not.toHaveBeenCalled();
   is(cuerpo.success, true);
   is(cuerpo.data[0].label, "Ventas del Mes");
   is(cuerpo.data[0].change, 50);
@@ -52,17 +58,20 @@ test("CP-F-ADM-01-01", "Calcula variación de ventas respecto al mes anterior y 
 });
 
 test("CP-F-ADM-01-02", "Evita división por cero y retorna variación 0 cuando no hay ventas el mes anterior", async () => {
+  // Arrange
   const p = montar();
   programarOrdenes(p, {
     actual: [ordenEntregada({ total: 250000 })],
     anterior: [],
     anio: [ordenEntregada({ total: 250000, createdAt: new Date(ANIO, 7, 3) })],
   });
-  p.orderItem.findMany.resolves([itemVendido(250000, "Cementos")]);
-
+  p.orderItem.findMany.mockResolvedValue([itemVendido(250000, "Cementos")]);
   const { req, res, next } = contextoExpress();
+
+  // Act
   await AdminController.getMetrics(req, res, next);
 
+  // Assert
   const cuerpo = res.body;
   is(cuerpo.data[0].change, 0);
   is(Number.isNaN(cuerpo.data[0].change), false);
@@ -73,6 +82,7 @@ test("CP-F-ADM-01-02", "Evita división por cero y retorna variación 0 cuando n
 });
 
 test("CP-F-ADM-01-03", "Agrupa ventas del año por mes correspondiente", async () => {
+  // Arrange
   const p = montar();
   programarOrdenes(p, {
     actual: [ordenEntregada({ total: 80000 })],
@@ -82,11 +92,13 @@ test("CP-F-ADM-01-03", "Agrupa ventas del año por mes correspondiente", async (
       ordenEntregada({ total: 120000, createdAt: new Date(ANIO, 7, 20) }),
     ],
   });
-  p.orderItem.findMany.resolves([itemVendido(420000, "Pinturas")]);
-
+  p.orderItem.findMany.mockResolvedValue([itemVendido(420000, "Pinturas")]);
   const { req, res, next } = contextoExpress();
+
+  // Act
   await AdminController.getMetrics(req, res, next);
 
+  // Assert
   const cuerpo = res.body;
   is(cuerpo.data[0].change, 100);
   is(cuerpo.charts.salesByMonth[0], 300000);
@@ -96,20 +108,23 @@ test("CP-F-ADM-01-03", "Agrupa ventas del año por mes correspondiente", async (
 });
 
 test("CP-F-ADM-01-04", "Acumula montos repetidos de la misma categoría", async () => {
+  // Arrange
   const p = montar();
   programarOrdenes(p, {
     actual: [ordenEntregada({ total: 200000 })],
     anterior: [ordenEntregada({ total: 200000 })],
     anio: [ordenEntregada({ total: 200000, createdAt: new Date(ANIO, 7, 1) })],
   });
-  p.orderItem.findMany.resolves([
+  p.orderItem.findMany.mockResolvedValue([
     itemVendido(120000, "Pisos y Ceramicas"),
     itemVendido(80000, "Pisos y Ceramicas"),
   ]);
-
   const { req, res, next } = contextoExpress();
+
+  // Act
   await AdminController.getMetrics(req, res, next);
 
+  // Assert
   const cuerpo = res.body;
   is(cuerpo.data[0].change, 0);
   is(cuerpo.charts.topCategories.length, 1);
@@ -117,13 +132,14 @@ test("CP-F-ADM-01-04", "Acumula montos repetidos de la misma categoría", async 
 });
 
 test("CP-F-ADM-01-05", "Ordena categorías y limita el reporte a las 5 principales", async () => {
+  // Arrange
   const p = montar();
   programarOrdenes(p, {
     actual: [ordenEntregada({ total: 100 })],
     anterior: [ordenEntregada({ total: 50 })],
     anio: [ordenEntregada({ total: 100, createdAt: new Date(ANIO, 7, 8) })],
   });
-  p.orderItem.findMany.resolves([
+  p.orderItem.findMany.mockResolvedValue([
     itemVendido(10, "Herrajes"),
     itemVendido(30, "Pisos y Ceramicas"),
     itemVendido(25, "Cementos"),
@@ -132,10 +148,12 @@ test("CP-F-ADM-01-05", "Ordena categorías y limita el reporte a las 5 principal
     itemVendido(7, "Griferias"),
     itemVendido(5, "Iluminacion"),
   ]);
-
   const { req, res, next } = contextoExpress();
+
+  // Act
   await AdminController.getMetrics(req, res, next);
 
+  // Assert
   const cuerpo = res.body;
   is(cuerpo.charts.topCategories.length, 5);
   eq(cuerpo.charts.topCategories, [
@@ -149,20 +167,23 @@ test("CP-F-ADM-01-05", "Ordena categorías y limita el reporte a las 5 principal
 });
 
 test("CP-F-ADM-01-06", "Asigna 0% a categorías cuando las ventas totales por categoría son 0", async () => {
+  // Arrange
   const p = montar();
   programarOrdenes(p, {
     actual: [ordenEntregada({ total: 90000 })],
     anterior: [ordenEntregada({ total: 60000 })],
     anio: [ordenEntregada({ total: 90000, createdAt: new Date(ANIO, 7, 12) })],
   });
-  p.orderItem.findMany.resolves([
+  p.orderItem.findMany.mockResolvedValue([
     itemVendido(0, "Pisos y Ceramicas"),
     itemVendido(0, "Pisos y Ceramicas"),
   ]);
-
   const { req, res, next } = contextoExpress();
+
+  // Act
   await AdminController.getMetrics(req, res, next);
 
+  // Assert
   const cuerpo = res.body;
   eq(cuerpo.charts.topCategories, [{ name: "Pisos y Ceramicas", pct: 0 }]);
   is(Number.isNaN(cuerpo.charts.topCategories[0].pct), false);

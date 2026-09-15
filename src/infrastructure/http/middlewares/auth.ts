@@ -21,13 +21,9 @@ declare global {
   }
 }
 
-let userRepository: IUserRepository = new PrismaUserRepository();
+const userRepository: IUserRepository = new PrismaUserRepository();
 
 // Costura de pruebas: permite inyectar un repositorio falso sin tocar la base de datos.
-export function setUserRepositoryForTests(repo: IUserRepository) {
-  userRepository = repo;
-}
-
 function toRequestUser(user: {
   id: string;
   email: string;

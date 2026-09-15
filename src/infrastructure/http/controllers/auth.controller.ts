@@ -7,20 +7,11 @@ import { hashPassword } from "../../../shared/utils/authHelper.js";
 
 import { IUserRepository } from "../../../domain/repositories/user-repository.interface.js";
 
-let userRepository: IUserRepository = new PrismaUserRepository();
-let registerUserUseCase = new RegisterUserUseCase(userRepository);
-let loginUserUseCase = new LoginUserUseCase(userRepository);
-let getUserProfileUseCase = new GetUserProfileUseCase(userRepository);
-let db: any = prisma;
-
-export function setAuthRepositoryForTests(repo: IUserRepository, testDb?: any) {
-  userRepository = repo;
-  if (testDb) db = testDb;
-  registerUserUseCase = new RegisterUserUseCase(userRepository);
-  loginUserUseCase = new LoginUserUseCase(userRepository);
-  getUserProfileUseCase = new GetUserProfileUseCase(userRepository);
-}
-
+const userRepository: IUserRepository = new PrismaUserRepository();
+const registerUserUseCase = new RegisterUserUseCase(userRepository);
+const loginUserUseCase = new LoginUserUseCase(userRepository);
+const getUserProfileUseCase = new GetUserProfileUseCase(userRepository);
+const db: any = prisma;
 function formatUserProfile(user: any, projectCount: number, orderCount: number) {
   return {
     id: user.id,

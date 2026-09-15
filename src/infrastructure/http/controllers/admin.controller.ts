@@ -2,11 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { prisma as defaultPrisma } from "../../database/prisma-client.js";
 
 // Costura de pruebas: permite sustituir el cliente Prisma por un doble en memoria.
-let db: typeof defaultPrisma = defaultPrisma;
-export function setPrismaClientForTests(client: any) {
-  db = client;
-}
-
+const db: typeof defaultPrisma = defaultPrisma;
 export function getStockStatus(stockQuantity: number): "stock_negativo" | "sin_stock" | "stock_bajo" | "normal" {
   if (stockQuantity < 0) return "stock_negativo";
   if (stockQuantity === 0) return "sin_stock";

@@ -1,53 +1,120 @@
-# Pruebas manuales del backend
+# Pruebas del backend
 
-Suite de verificación **a la antigua**: sin Vitest, sin librería de mocks. Son
-scripts de Node en TypeScript que llaman al código real, comprueban con
-`node:assert/strict` e imprimen `[PASS]` / `[FAIL]` por caso.
+Suite sobre **Vitest**. Los dobles son mocks de Vitest usados con su API a la
+vista (`vi.fn()`, `vi.mock()`), sin ninguna capa intermedia y sin costuras de
+prueba en el código de producción. Los casos siguen derivando del método de
+**cobertura de ruta básica de McCabe** (ISTQB, ISO/IEC/IEEE 29119); los ids del
+plan no cambiaron.
 
-Los casos siguen derivando del método de **cobertura de ruta básica de McCabe**
-(ISTQB, ISO/IEC/IEEE 29119); solo cambió la forma de ejecutarlos.
+Todos los casos están escritos con el **patrón AAA** (Arrange · Act · Assert),
+marcado explícitamente con comentarios en cada cuerpo de prueba:
+
+```ts
+test("CP-F-AUTH-01-02", "Rechaza registro si el correo ya existe", async () => {
+  // Arrange
+  const repo = fakeUsuarios();
+  const caso = new RegisterUserUseCase(repo as any);
+  repo.findByEmail.mockResolvedValue(usuario());
+
+  // Act
+  const error = await grab(caso.execute(datosRegistro() as any));
+
+  // Assert
+  ok(error instanceof AppError);
+  is(error.message, "El correo electrónico ya está registrado.");
+  expect(repo.create).not.toHaveBeenCalled();
+});
+```
+
+Regla: el **Act** es una sola invocación de la unidad bajo prueba (o una por
+escenario, cuando el caso cubre varios); ninguna aserción vive antes de él. Si
+un escenario necesita rearmar un doble a mitad de camino, ese rearmado va en el
+Act con un comentario, y el valor que se va a comprobar se captura ahí mismo
+—antes de que un `mockReset()` lo borre.
 
 ## Cómo ejecutar
 
 ```bash
 npm install
-npx prisma generate          # necesario: los repos importan el cliente generado
-npm test                     # corre los 109 casos
-npm test -- F-CHK            # filtra por módulo (subcadena del id)
-npm test -- CP-F-AUTH-01-02  # un caso puntual
+npx prisma generate                  # necesario: los repos importan el cliente generado
+npm test                             # corre los 194 casos
+npm run test:watch                   # modo watch de Vitest
+npm test -- tests/F-CHK-01.ts        # un archivo
+npm test -- -t CP-F-AUTH-01-02       # un caso por id (filtro por nombre)
+npm test -- -t F-CHK                 # un módulo (subcadena del id)
+npm run test:coverage                # cobertura v8
 ```
 
-`npm test` es `tsx tests/run-all.ts`. Sale con código ≠ 0 si algún caso falla,
-**incluidos los 14 casos que documentan defectos abiertos** (ver tabla abajo):
-un run limpio hoy es `95 passed, 14 failed`.
+`npm test` es `vitest run`. Un run limpio hoy es `194 passed (194)` y sale con
+código 0: los 14 casos que documentan defectos abiertos están declarados con
+`test.fails(...)`, así que **se esperan fallidos** y no rompen CI (ver la tabla
+de defectos abajo).
 
 ## Estructura
 
 | Archivo | Qué contiene |
 |---|---|
-| `tests/harness.ts` | Registro de casos (`test`), ejecutor (`run`), aserciones (`is`, `eq`, `ok`, `has`, `subset`, `grab`…) y `soft()` para aserciones no abortivas. |
-| `tests/helpers.ts` | `spy()` artesanal, repositorios falsos (`fakeUsuarios()`, `fakeCarritos()`…), fábricas de datos en español (`producto()`, `proyecto()`, `carrito()`…), `contextoExpress()` y `conRelojFijo()`. |
-| `tests/run-all.ts` | Importa los 15 archivos `F-*.ts` y llama a `run()`. |
+| `vitest.config.ts` | `include: tests/**/*.ts` (menos `harness`/`helpers`), cobertura v8 y el alias que traduce los imports `"./x.js"` de ESM NodeNext a los `.ts` reales. |
+| `tests/harness.ts` | `test(id, desc, fn)` → `it()` de Vitest, aserciones cortas sobre `node:assert/strict` (`is`, `eq`, `ok`, `has`, `subset`, `grab`…), `soft()` para aserciones no abortivas, y re-export de `expect` / `vi` para casos nuevos (salvo `vi.mock()`, que exige importar `vi` de `"vitest"`). |
+| `tests/helpers.ts` | Repositorios falsos como objetos de `vi.fn()` (`fakeUsuarios()`, `fakeCarritos()`…), fábricas de datos en español (`producto()`, `proyecto()`, `carrito()`…), `contextoExpress()` y `conRelojFijo()`. |
+| `tests/mocks/repositorios.ts` | Instancias de mock compartidas entre la prueba y el código bajo prueba, más `reiniciarRepositorios()`. Excluido del `include` de Vitest. |
 | `tests/F-<MODULO>-<NN>.ts` | Un archivo por unidad / grafo de flujo. |
+| `tests/unit-*.ts` | Pruebas unitarias de controladores, repositorios Prisma, middlewares, validadores y rutas. |
 
-### Sustituciones respecto a la suite vieja
+No hay `run-all.ts`: Vitest descubre los archivos por el `include` del config.
 
-| Vitest | Manual |
+### Mocks
+
+No hay capa intermedia: los dobles **son** mocks de Vitest y se usan con su API
+a la vista. Los repositorios falsos de `helpers.ts` son objetos planos de
+`vi.fn()`, y en los casos se programan y comprueban así:
+
+| Para qué | Cómo |
 |---|---|
-| `vi.fn()` | `spy()` de `helpers.ts` |
-| `.mockResolvedValue(v)` / `.mockImplementation(f)` | `.resolves(v)` / `.does(f)` |
-| `.mock.calls[0][0]` | `arg(spy)` / `spy.calls[0][0]` |
-| `expect(x).toHaveBeenCalledWith(a)` | `calledWith(spy, a)` |
-| `expect(x).not.toHaveBeenCalled()` | `neverCalled(spy)` |
-| `vi.mock("prisma-client")` | cliente falso inyectado por constructor: `new PrismaCartRepository(dbFalso)` |
-| `vi.mock("prisma-user.repository")` | `setUserRepositoryForTests(repoFalso)` (costura en `middlewares/auth.ts`) |
-| `prisma` global del `AdminController` | `setPrismaClientForTests(clienteFalso)` (costura en `admin.controller.ts`) |
-| `vi.useFakeTimers()` / `setSystemTime` | `conRelojFijo(iso, fn)` (parchea `Date.now`) |
-| `expect.soft(...)` | `soft(() => ...)` |
+| Crear el doble | `vi.fn()` (o `vi.fn(impl)` con implementación por defecto) |
+| Programar el retorno | `.mockResolvedValue(v)` · `.mockRejectedValue(e)` · `.mockReturnValue(v)` |
+| Implementación propia | `.mockImplementation(f)` |
+| Encolar una sola llamada | `.mockResolvedValueOnce(v)` |
+| Rearmar a mitad de caso | `.mockReset()` (vuelve a la implementación inicial) |
+| Inspeccionar argumentos | `.mock.calls[i][j]` |
+| Comprobar la llamada | `expect(m).toHaveBeenCalledWith(...)` · `expect(m).not.toHaveBeenCalled()` |
+| Congelar el reloj | `vi.useFakeTimers()` + `vi.setSystemTime()` (en `conRelojFijo`) |
+
+Recuento actual: 129 `vi.fn()`, 208 programaciones (`mock*Value*`), 97 lecturas
+de `.mock.calls` y 79 aserciones con matchers de mock.
+
+#### Mockeo de módulos
+
+Los controladores y `middlewares/auth.ts` construyen sus repositorios Prisma en
+el ámbito del módulo y se los pasan a los casos de uso al importarse. Para
+sustituirlos **no hay ninguna costura en producción**: se mockea el módulo, y el
+constructor devuelve el doble compartido de `tests/mocks/repositorios.ts`.
+
+```ts
+vi.mock("../src/infrastructure/database/repositories/prisma-cart.repository.js", async () => {
+  const { mockCarritos } = await import("./mocks/repositorios.js");
+  return { PrismaCartRepository: vi.fn(() => mockCarritos) };
+});
+
+beforeEach(reiniciarRepositorios);
+```
+
+Como los casos de uso capturan la referencia al importar, `reiniciarRepositorios()`
+no crea objetos nuevos: **renueva las propiedades del mismo objeto**, así cada caso
+arranca con mocks limpios sin romper esa referencia.
+
+`vi` se importa de `"vitest"` directamente en los archivos que usan `vi.mock()`:
+la llamada se hoistea y Vitest no reconoce un `vi` re-exportado por `harness.ts`.
+
+Archivos con `vi.mock()`: `unit-controllers.ts` (8 módulos), `unit-auth-middleware.ts`,
+`unit-routes-and-server.ts`, `F-AUTH-03`, `F-ADM-01`, `F-ADM-02`, `F-ADM-03`.
+
+Las pruebas de repositorio (`unit-prisma-repositories.ts`, `F-CAT-01`, `F-CHK-*`)
+siguen inyectando un cliente `db` falso por constructor
+(`new PrismaCartRepository(dbFalso)`), que es una dependencia declarada, no una
+costura. Ninguna prueba toca una base de datos real.
 
 ## Catálogo de casos
-
-Los ids y descripciones no cambiaron. Resumen por módulo:
 
 | Módulo | Archivos | Casos |
 |---|---|---|
@@ -56,13 +123,26 @@ Los ids y descripciones no cambiaron. Resumen por módulo:
 | Carrito y pago (`F-CHK`) | 3 | 14 |
 | Proyectos (`F-PROY`) | 3 | 43 |
 | Administración (`F-ADM`) | 3 | 16 |
-| **Total** | **15** | **109** |
+| **Subtotal flujos** | **15** | **109** |
+| Unitarias (`unit-*`) | 8 | 85 |
+| **Total** | **23** | **194** |
 
 ## Defectos localizados
 
 La suite mantiene aserciones estrictas que documentan la regla de negocio
-exigida frente al comportamiento actual. Estos 14 casos **fallan a propósito**
-hasta que se corrija el código.
+exigida frente al comportamiento actual. Estos 14 casos están declarados con
+`test.fails(...)`: **se espera que fallen** hasta que se corrija el código, así
+que la suite queda en verde mientras el defecto siga abierto.
+
+> **La señal está invertida a propósito.** El día que alguien corrija uno de
+> estos defectos, su caso se pone **rojo** con «expected to fail, but passed».
+> Eso no es una regresión: es el aviso de devolver ese caso a `test(...)`
+> normal y tachar la fila de esta tabla.
+>
+> Contrapartida honesta de `test.fails`: da por bueno *cualquier* error, no
+> sólo el que documenta el defecto. Si un caso de estos empieza a fallar por
+> otro motivo (un `TypeError` de un refactor, por ejemplo), seguirá en verde.
+> Por eso la fila de la tabla nombra la unidad y el síntoma concreto.
 
 | # | Defecto | Unidad | Caso que lo evidencia |
 |---|---|---|---|

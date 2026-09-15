@@ -4,7 +4,9 @@
 
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { test, is, ok, eq } from "./harness.js";
+import { vi, beforeEach } from "vitest";
+import { test, is, ok } from "./harness.js";
+import { mockCategorias, reiniciarRepositorios } from "./mocks/repositorios.js";
 import app from "../src/infrastructure/http/express-server.js";
 
 import categoriesRouter from "../src/infrastructure/http/routes/categories.js";
@@ -15,8 +17,15 @@ import ordersRouter from "../src/infrastructure/http/routes/orders.js";
 import usersRouter from "../src/infrastructure/http/routes/users.js";
 import adminRouter from "../src/infrastructure/http/routes/admin.js";
 
-import { setCatalogRepositoriesForTests } from "../src/infrastructure/http/controllers/catalog.controller.js";
-import { spy } from "./helpers.js";
+// El controlador de catálogo construye `new PrismaCategoryRepository()` al
+// importarse (vía express-server): se mockea el módulo para que devuelva el
+// doble compartido.
+vi.mock("../src/infrastructure/database/repositories/prisma-category.repository.js", async () => {
+  const { mockCategorias } = await import("./mocks/repositorios.js");
+  return { PrismaCategoryRepository: vi.fn(() => mockCategorias) };
+});
+
+beforeEach(reiniciarRepositorios);
 
 // Helper para extraer rutas y métodos de un Router de Express
 function obtenerRutas(router: any): Array<{ path: string; methods: string[] }> {
@@ -42,46 +51,55 @@ function obtenerServerStack(): any[] {
 // ============================================================================
 
 test("UNIT-SRV-01", "Express App está inicializado con middlewares y rutas base", () => {
+  // Arrange — la app se construye al importar el módulo.
+
+  // Act
+  const stack = obtenerServerStack();
+
+  // Assert
   ok(typeof app === "function");
   is(app.get("x-powered-by"), false);
-
-  const stack = obtenerServerStack();
   ok(stack.length > 5, "La pila de middleware del servidor debe tener registradas las rutas y middlewares");
 });
 
 test("UNIT-SRV-02", "Middleware de reescritura /api -> /api/v1 funciona correctamente", () => {
+  // Arrange — en express-server: app.use("/api", (req, res, next) => { ... }).
+  // Se busca esa capa anónima, anterior al router v1.
   const stack = obtenerServerStack();
-  // En express-server: app.use("/api", (req, res, next) => { ... })
-  // Buscamos la capa anónima anterior al router v1
   const rewriteLayer = stack.find((layer: any) => layer.name === "<anonymous>" && typeof layer.handle === "function");
-  
-  ok(rewriteLayer, "El middleware de reescritura de /api debe existir en la pila");
+  // Falla de montaje, no aserción: sin esa capa el caso no tiene qué ejercitar.
+  if (!rewriteLayer) throw new Error("No se encontró el middleware de reescritura de /api en la pila");
   const middleware = rewriteLayer.handle;
 
-  // Caso 1: URL que no empieza por /v1 debe anteponer /v1
-  const req1: any = { url: "/categories" };
+  const req1: any = { url: "/categories" };   // sin /v1
+  const req2: any = { url: "/v1/products" };  // ya con /v1
   let nextCalled1 = false;
-  middleware(req1, {} as any, () => { nextCalled1 = true; });
-  is(req1.url, "/v1/categories");
-  is(nextCalled1, true);
-
-  // Caso 2: URL que ya empieza por /v1 no debe duplicarse
-  const req2: any = { url: "/v1/products" };
   let nextCalled2 = false;
+
+  // Act
+  middleware(req1, {} as any, () => { nextCalled1 = true; });
   middleware(req2, {} as any, () => { nextCalled2 = true; });
-  is(req2.url, "/v1/products");
+
+  // Assert
+  is(req1.url, "/v1/categories"); // se antepone /v1
+  is(nextCalled1, true);
+  is(req2.url, "/v1/products");   // no se duplica
   is(nextCalled2, true);
 });
 
 test("UNIT-SRV-03", "Servidor Express responde a GET / con metadatos de la API", async () => {
+  // Arrange
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
 
   try {
+    // Act
     const res = await fetch(`http://127.0.0.1:${port}/`);
-    is(res.status, 200);
     const body: any = await res.json();
+
+    // Assert
+    is(res.status, 200);
     is(body.message, "Homara API — Backend");
     is(body.version, "1.0.0");
     ok(body.endpoints.categories !== undefined);
@@ -93,11 +111,13 @@ test("UNIT-SRV-03", "Servidor Express responde a GET / con metadatos de la API",
 });
 
 test("UNIT-SRV-04", "Servidor Express maneja peticiones OPTIONS y CORS", async () => {
+  // Arrange
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
 
   try {
+    // Act
     const res = await fetch(`http://127.0.0.1:${port}/`, {
       method: "OPTIONS",
       headers: {
@@ -105,6 +125,8 @@ test("UNIT-SRV-04", "Servidor Express maneja peticiones OPTIONS y CORS", async (
         "Access-Control-Request-Method": "GET"
       }
     });
+
+    // Assert
     is(res.status, 204);
   } finally {
     server.close();
@@ -116,12 +138,22 @@ test("UNIT-SRV-04", "Servidor Express maneja peticiones OPTIONS y CORS", async (
 // ============================================================================
 
 test("UNIT-ROUTES-CAT-01", "categoriesRouter define GET /", () => {
+  // Arrange — el router se importa ya construido; no hay dobles que montar.
+
+  // Act
   const rutas = obtenerRutas(categoriesRouter);
+
+  // Assert
   ok(rutas.some((r) => r.path === "/" && r.methods.includes("get")));
 });
 
 test("UNIT-ROUTES-PRD-01", "productsRouter define endpoints de catálogo y administración", () => {
+  // Arrange — el router se importa ya construido; no hay dobles que montar.
+
+  // Act
   const rutas = obtenerRutas(productsRouter);
+
+  // Assert
   ok(rutas.some((r) => r.path === "/storefront" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/:id" && r.methods.includes("get")));
@@ -133,7 +165,12 @@ test("UNIT-ROUTES-PRD-01", "productsRouter define endpoints de catálogo y admin
 });
 
 test("UNIT-ROUTES-PROY-01", "projectsRouter define CRUD de proyectos", () => {
+  // Arrange — el router se importa ya construido; no hay dobles que montar.
+
+  // Act
   const rutas = obtenerRutas(projectsRouter);
+
+  // Assert
   ok(rutas.some((r) => r.path === "/" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/:id" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/" && r.methods.includes("post")));
@@ -142,7 +179,12 @@ test("UNIT-ROUTES-PROY-01", "projectsRouter define CRUD de proyectos", () => {
 });
 
 test("UNIT-ROUTES-CART-01", "cartRouter define endpoints de carrito", () => {
+  // Arrange — el router se importa ya construido; no hay dobles que montar.
+
+  // Act
   const rutas = obtenerRutas(cartRouter);
+
+  // Assert
   ok(rutas.some((r) => r.path === "/" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/items" && r.methods.includes("post")));
   ok(rutas.some((r) => r.path === "/items/:itemId" && r.methods.includes("put")));
@@ -150,7 +192,12 @@ test("UNIT-ROUTES-CART-01", "cartRouter define endpoints de carrito", () => {
 });
 
 test("UNIT-ROUTES-ORD-01", "ordersRouter define endpoints de pedidos", () => {
+  // Arrange — el router se importa ya construido; no hay dobles que montar.
+
+  // Act
   const rutas = obtenerRutas(ordersRouter);
+
+  // Assert
   ok(rutas.some((r) => r.path === "/" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/:id" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/" && r.methods.includes("post")));
@@ -158,7 +205,12 @@ test("UNIT-ROUTES-ORD-01", "ordersRouter define endpoints de pedidos", () => {
 });
 
 test("UNIT-ROUTES-USR-01", "usersRouter define endpoints de autenticación y perfil", () => {
+  // Arrange — el router se importa ya construido; no hay dobles que montar.
+
+  // Act
   const rutas = obtenerRutas(usersRouter);
+
+  // Assert
   ok(rutas.some((r) => r.path === "/register" && r.methods.includes("post")));
   ok(rutas.some((r) => r.path === "/login" && r.methods.includes("post")));
   ok(rutas.some((r) => r.path === "/me" && r.methods.includes("get")));
@@ -167,7 +219,12 @@ test("UNIT-ROUTES-USR-01", "usersRouter define endpoints de autenticación y per
 });
 
 test("UNIT-ROUTES-ADM-01", "adminRouter define métricas e inventario", () => {
+  // Arrange — el router se importa ya construido; no hay dobles que montar.
+
+  // Act
   const rutas = obtenerRutas(adminRouter);
+
+  // Assert
   ok(rutas.some((r) => r.path === "/metrics" && r.methods.includes("get")));
   ok(rutas.some((r) => r.path === "/inventory" && r.methods.includes("get")));
 });
@@ -177,23 +234,22 @@ test("UNIT-ROUTES-ADM-01", "adminRouter define métricas e inventario", () => {
 // ============================================================================
 
 test("UNIT-SRV-05", "Petición HTTP a /api/v1/categories devuelve listado de categorías", async () => {
-  const fakeCatRepo = {
-    findAll: spy(async () => [
-      { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" }
-    ]),
-    findBySlug: spy(),
-    create: spy(),
-  };
-  setCatalogRepositoriesForTests({ categoryRepo: fakeCatRepo as any });
+  // Arrange
+  mockCategorias.findAll.mockResolvedValue([
+    { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" },
+  ]);
 
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
 
   try {
+    // Act
     const res = await fetch(`http://127.0.0.1:${port}/api/v1/categories`);
-    is(res.status, 200);
     const json: any = await res.json();
+
+    // Assert
+    is(res.status, 200);
     is(json.success, true);
     is(json.data.length, 1);
     is(json.data[0].name, "Pisos");
@@ -203,23 +259,22 @@ test("UNIT-SRV-05", "Petición HTTP a /api/v1/categories devuelve listado de cat
 });
 
 test("UNIT-SRV-06", "Petición HTTP con reescritura /api/categories funciona idénticamente", async () => {
-  const fakeCatRepo = {
-    findAll: spy(async () => [
-      { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" }
-    ]),
-    findBySlug: spy(),
-    create: spy(),
-  };
-  setCatalogRepositoriesForTests({ categoryRepo: fakeCatRepo as any });
+  // Arrange
+  mockCategorias.findAll.mockResolvedValue([
+    { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" },
+  ]);
 
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
 
   try {
+    // Act
     const res = await fetch(`http://127.0.0.1:${port}/api/categories`);
-    is(res.status, 200);
     const json: any = await res.json();
+
+    // Assert
+    is(res.status, 200);
     is(json.success, true);
     is(json.data.length, 1);
   } finally {
@@ -228,12 +283,16 @@ test("UNIT-SRV-06", "Petición HTTP con reescritura /api/categories funciona id�
 });
 
 test("UNIT-SRV-07", "Ruta no existente retorna 404 a través del manejador global", async () => {
+  // Arrange
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
 
   try {
+    // Act
     const res = await fetch(`http://127.0.0.1:${port}/api/v1/ruta-inexistente-xyz`);
+
+    // Assert
     is(res.status, 404);
   } finally {
     server.close();

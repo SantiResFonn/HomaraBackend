@@ -1,60 +1,90 @@
-﻿import { test, is, ok } from "./harness.js";
+﻿import { test, is } from "./harness.js";
 import { cuidParamSchema, itemIdParamSchema, listProjectsQuerySchema, listOrdersQuerySchema } from "../src/infrastructure/http/validators/common.validator.js";
 import { createOrderSchema, updateOrderStatusSchema } from "../src/infrastructure/http/validators/order.validator.js";
 import { createProjectSchema, updateProjectSchema } from "../src/infrastructure/http/validators/project.validator.js";
 
 test("UNIT-VAL-01", "Valida cuidParamSchema y itemIdParamSchema con CUID válido e inválido", () => {
+  // Arrange
   const validCuid = "cju055a6d0000y8v760ny8rq5";
-  is(cuidParamSchema.safeParse({ id: validCuid }).success, true);
-  is(cuidParamSchema.safeParse({ id: "123" }).success, false);
 
-  is(itemIdParamSchema.safeParse({ itemId: validCuid }).success, true);
-  is(itemIdParamSchema.safeParse({ itemId: "invalid" }).success, false);
+  // Act
+  const cuidValido = cuidParamSchema.safeParse({ id: validCuid });
+  const cuidInvalido = cuidParamSchema.safeParse({ id: "123" });
+  const itemValido = itemIdParamSchema.safeParse({ itemId: validCuid });
+  const itemInvalido = itemIdParamSchema.safeParse({ itemId: "invalid" });
+
+  // Assert
+  is(cuidValido.success, true);
+  is(cuidInvalido.success, false);
+  is(itemValido.success, true);
+  is(itemInvalido.success, false);
 });
 
 test("UNIT-VAL-02", "Valida listOrdersQuerySchema y transformación de admin boolean", () => {
-  const parsed = listOrdersQuerySchema.safeParse({ admin: "true" });
+  // Arrange
+  const adminVerdadero = { admin: "true" };
+  const adminFalso = { admin: "false" };
+
+  // Act
+  const parsed = listOrdersQuerySchema.safeParse(adminVerdadero);
+  const parsedFalse = listOrdersQuerySchema.safeParse(adminFalso);
+  const proyectosSinFiltro = listProjectsQuerySchema.safeParse({});
+
+  // Assert
   is(parsed.success, true);
   if (parsed.success) {
     is(parsed.data.admin, true);
   }
-
-  const parsedFalse = listOrdersQuerySchema.safeParse({ admin: "false" });
   is(parsedFalse.success, true);
   if (parsedFalse.success) {
     is(parsedFalse.data.admin, false);
   }
-
-  is(listProjectsQuerySchema.safeParse({}).success, true);
+  is(proyectosSinFiltro.success, true);
 });
 
 test("UNIT-VAL-03", "Valida createOrderSchema y updateOrderStatusSchema", () => {
+  // Arrange
   const validOrder = {
     paymentMethod: "TARJETA_CREDITO",
     shippingAddress: "Calle 123 #45-67",
     shippingCity: "Bogotá",
   };
-  is(createOrderSchema.safeParse(validOrder).success, true);
-  is(createOrderSchema.safeParse({}).success, false);
 
-  is(updateOrderStatusSchema.safeParse({ status: "ENVIADO" }).success, true);
-  is(updateOrderStatusSchema.safeParse({ status: "DESCONOCIDO" }).success, false);
+  // Act
+  const pedidoValido = createOrderSchema.safeParse(validOrder);
+  const pedidoVacio = createOrderSchema.safeParse({});
+  const estadoValido = updateOrderStatusSchema.safeParse({ status: "ENVIADO" });
+  const estadoDesconocido = updateOrderStatusSchema.safeParse({ status: "DESCONOCIDO" });
+
+  // Assert
+  is(pedidoValido.success, true);
+  is(pedidoVacio.success, false);
+  is(estadoValido.success, true);
+  is(estadoDesconocido.success, false);
 });
 
 test("UNIT-VAL-04", "Valida createProjectSchema y updateProjectSchema", () => {
+  // Arrange
   const validProject = {
     name: "Remodelación Cocina",
     type: "PISO",
     area: 25.5,
     wastePercent: 10,
   };
-  is(createProjectSchema.safeParse(validProject).success, true);
-  is(createProjectSchema.safeParse({ name: "", type: "PISO", area: 10 }).success, false);
-
   const validUpdate = {
     area: 30,
     status: "COMPLETADO",
   };
-  is(updateProjectSchema.safeParse(validUpdate).success, true);
-  is(updateProjectSchema.safeParse({ area: -5 }).success, false);
+
+  // Act
+  const proyectoValido = createProjectSchema.safeParse(validProject);
+  const proyectoSinNombre = createProjectSchema.safeParse({ name: "", type: "PISO", area: 10 });
+  const cambioValido = updateProjectSchema.safeParse(validUpdate);
+  const areaNegativa = updateProjectSchema.safeParse({ area: -5 });
+
+  // Assert
+  is(proyectoValido.success, true);
+  is(proyectoSinNombre.success, false);
+  is(cambioValido.success, true);
+  is(areaNegativa.success, false);
 });

@@ -1,25 +1,39 @@
 // F-ADM-03 · Inventario y stock
 // Unidad: AdminController.getInventoryReport()  (GET /api/v1/admin/inventory)
 
-import { test, is, eq, ok, subset } from "./harness.js";
-import { fakePrismaAdmin, contextoExpress, filaProductoPrisma, neverCalled } from "./helpers.js";
-import { AdminController, setPrismaClientForTests } from "../src/infrastructure/http/controllers/admin.controller.js";
+import { vi, beforeEach } from "vitest";
+import { test, is, eq, subset, expect } from "./harness.js";
+import { contextoExpress, filaProductoPrisma } from "./helpers.js";
+import { mockPrisma, reiniciarRepositorios } from "./mocks/repositorios.js";
+import { AdminController } from "../src/infrastructure/http/controllers/admin.controller.js";
+
+// El controlador captura `prisma` al importarse: se mockea el módulo del
+// cliente para que devuelva el doble compartido.
+vi.mock("../src/infrastructure/database/prisma-client.js", async () => {
+  const { mockPrisma } = await import("./mocks/repositorios.js");
+  return { prisma: mockPrisma };
+});
+
+beforeEach(reiniciarRepositorios);
+
 
 async function reporteCon(productos: any[]) {
-  const p = fakePrismaAdmin();
-  p.product.findMany.resolves(productos);
-  setPrismaClientForTests(p);
+  mockPrisma.product.findMany.mockResolvedValue(productos);
   const { req, res, next } = contextoExpress();
   await AdminController.getInventoryReport(req, res, next);
   return { cuerpo: res.body as any, next };
 }
 
-test("CP-F-ADM-03-01", "Clasifica productos con existencias menores a cero como stock_negativo", async () => {
-  const { cuerpo, next } = await reporteCon([
-    filaProductoPrisma({ id: "prd_neg", stockQuantity: -5, price: 1000, inStock: false }),
-  ]);
+// Defecto abierto #11 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-ADM-03-01", "Clasifica productos con existencias menores a cero como stock_negativo", async () => {
+  // Arrange
+  const filas = [filaProductoPrisma({ id: "prd_neg", stockQuantity: -5, price: 1000, inStock: false })];
 
-  ok(neverCalled(next));
+  // Act
+  const { cuerpo, next } = await reporteCon(filas);
+
+  // Assert
+  expect(next).not.toHaveBeenCalled();
   is(cuerpo.success, true);
   is(cuerpo.data.products[0].stockStatus, "stock_negativo");
   is(cuerpo.data.products[0].stockValue, -5000);
@@ -30,16 +44,20 @@ test("CP-F-ADM-03-01", "Clasifica productos con existencias menores a cero como 
     outOfStockCount: 0,
     negativeStockCount: 1,
   });
-
   // DEFECTO: totalUnits debería sumar solo existencias positivas (no restar stock negativo)
   is(cuerpo.data.stats.totalUnits, 0);
 });
 
 test("CP-F-ADM-03-02", "Clasifica productos con existencias en 0 como sin_stock", async () => {
-  const { cuerpo } = await reporteCon([
+  // Arrange
+  const filas = [
     filaProductoPrisma({ id: "prd_cero", stockQuantity: 0, price: 38900, inStock: false }),
-  ]);
+  ];
 
+  // Act
+  const { cuerpo } = await reporteCon(filas);
+
+  // Assert
   is(cuerpo.data.products[0].stockStatus, "sin_stock");
   is(cuerpo.data.products[0].stockValue, 0);
   is(cuerpo.data.stats.outOfStockCount, 1);
@@ -49,10 +67,15 @@ test("CP-F-ADM-03-02", "Clasifica productos con existencias en 0 como sin_stock"
 });
 
 test("CP-F-ADM-03-03", "Marca 49 unidades como límite superior de alerta stock_bajo", async () => {
-  const { cuerpo } = await reporteCon([
+  // Arrange
+  const filas = [
     filaProductoPrisma({ id: "prd_49", stockQuantity: 49, price: 2000, inStock: true }),
-  ]);
+  ];
 
+  // Act
+  const { cuerpo } = await reporteCon(filas);
+
+  // Assert
   is(cuerpo.data.products[0].stockStatus, "stock_bajo");
   is(cuerpo.data.products[0].stockValue, 98000);
   is(cuerpo.data.products[0].stockQuantity, 49);
@@ -63,10 +86,15 @@ test("CP-F-ADM-03-03", "Marca 49 unidades como límite superior de alerta stock_
 });
 
 test("CP-F-ADM-03-04", "Marca 50 unidades como límite inferior de inventario normal", async () => {
-  const { cuerpo } = await reporteCon([
+  // Arrange
+  const filas = [
     filaProductoPrisma({ id: "prd_50", stockQuantity: 50, price: 2000, inStock: true }),
-  ]);
+  ];
 
+  // Act
+  const { cuerpo } = await reporteCon(filas);
+
+  // Assert
   is(cuerpo.data.products[0].stockStatus, "normal");
   is(cuerpo.data.products[0].stockValue, 100000);
   eq(cuerpo.data.stats, {
@@ -78,12 +106,18 @@ test("CP-F-ADM-03-04", "Marca 50 unidades como límite inferior de inventario no
   });
 });
 
-test("CP-F-ADM-03-05", "Procesa múltiples productos combinando estados en el reporte", async () => {
-  const { cuerpo } = await reporteCon([
+// Defecto abierto #11 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-ADM-03-05", "Procesa múltiples productos combinando estados en el reporte", async () => {
+  // Arrange
+  const filas = [
     filaProductoPrisma({ id: "prd_neg", name: "Arena", stockQuantity: -3, price: 5000, inStock: false }),
     filaProductoPrisma({ id: "prd_cero", name: "Grava", stockQuantity: 0, price: 4000, inStock: false }),
-  ]);
+  ];
 
+  // Act
+  const { cuerpo } = await reporteCon(filas);
+
+  // Assert
   eq(cuerpo.data.products.map((p: any) => p.id), ["prd_neg", "prd_cero"]);
   is(cuerpo.data.products[0].stockStatus, "stock_negativo");
   is(cuerpo.data.products[1].stockStatus, "sin_stock");
@@ -95,7 +129,6 @@ test("CP-F-ADM-03-05", "Procesa múltiples productos combinando estados en el re
     outOfStockCount: 1,
     negativeStockCount: 1,
   });
-
   // DEFECTO: totalUnits no debería restar existencias negativas
   is(cuerpo.data.stats.totalUnits, 0);
 });
