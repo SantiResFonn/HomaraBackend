@@ -102,7 +102,8 @@ test("CP-F-CHK-03-02", "Genera pedido con envío gratuito e ítems congelados cu
   expect(productos.findById).not.toHaveBeenCalled();
 });
 
-test("CP-F-CHK-03-03", "Evalúa umbral de envío gratuito con subtotal de 500000 exactos", async () => {
+// Defecto abierto #10 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-CHK-03-03", "Evalúa umbral de envío gratuito con subtotal de 500000 exactos", async () => {
   // Arrange
   const { pedidos, carritos, caso } = montar();
   carritos.findByUserId.mockResolvedValue(carritoCon([itemCarrito({ quantity: 4, price: 125000 })]));

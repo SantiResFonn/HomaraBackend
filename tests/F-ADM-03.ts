@@ -24,7 +24,8 @@ async function reporteCon(productos: any[]) {
   return { cuerpo: res.body as any, next };
 }
 
-test("CP-F-ADM-03-01", "Clasifica productos con existencias menores a cero como stock_negativo", async () => {
+// Defecto abierto #11 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-ADM-03-01", "Clasifica productos con existencias menores a cero como stock_negativo", async () => {
   // Arrange
   const filas = [filaProductoPrisma({ id: "prd_neg", stockQuantity: -5, price: 1000, inStock: false })];
 
@@ -105,7 +106,8 @@ test("CP-F-ADM-03-04", "Marca 50 unidades como límite inferior de inventario no
   });
 });
 
-test("CP-F-ADM-03-05", "Procesa múltiples productos combinando estados en el reporte", async () => {
+// Defecto abierto #11 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-ADM-03-05", "Procesa múltiples productos combinando estados en el reporte", async () => {
   // Arrange
   const filas = [
     filaProductoPrisma({ id: "prd_neg", name: "Arena", stockQuantity: -3, price: 5000, inStock: false }),

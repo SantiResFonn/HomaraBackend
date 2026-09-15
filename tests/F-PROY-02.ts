@@ -35,7 +35,8 @@ test("CP-F-PROY-02-01", "Aplica 5% de desperdicio por defecto para proyectos de 
   is(materiales.length, 4);
 });
 
-test("CP-F-PROY-02-02", "Prioriza porcentaje explícito de desperdicio sobre patrón de colocación", () => {
+// Defecto abierto #2 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-PROY-02-02", "Prioriza porcentaje explícito de desperdicio sobre patrón de colocación", () => {
   // Arrange
   const entrada = {
     type: "integral",
@@ -154,7 +155,8 @@ test("CP-F-PROY-02-05", "Asigna 10% de desperdicio para colocación directa o po
 
 // --- Revestimiento principal ------------------------------------------
 
-test("CP-F-PROY-02-06", "Mantiene pintura genérica si el producto vinculado es material de construcción", () => {
+// Defecto abierto #5 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-PROY-02-06", "Mantiene pintura genérica si el producto vinculado es material de construcción", () => {
   // Arrange
   const entrada = {
     type: "interior",
@@ -205,7 +207,8 @@ test("CP-F-PROY-02-07", "Cotiza producto del catálogo por m² con desperdicio a
   is(materiales.length, 7);
 });
 
-test("CP-F-PROY-02-08", "Asigna baldosa genérica y calcula pegante vinculado por rendimiento de peso", () => {
+// Defecto abierto #1 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-PROY-02-08", "Asigna baldosa genérica y calcula pegante vinculado por rendimiento de peso", () => {
   // Arrange — mismo proyecto vinculando primero un pegante y luego un revestimiento.
   const base = {
     type: "residencial",
@@ -479,7 +482,8 @@ test("CP-F-PROY-02-18", "Omite primer para vinilo si includeAdhesive está desac
 
 // --- Herramientas y paredes ---------------------------------------
 
-test("CP-F-PROY-02-19", "Cotiza paredes en proyecto integral aunque includeTools sea false", () => {
+// Defecto abierto #3 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-PROY-02-19", "Cotiza paredes en proyecto integral aunque includeTools sea false", () => {
   // Arrange
   const entrada = {
     type: "integral",

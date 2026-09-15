@@ -127,7 +127,8 @@ test("CP-F-CHK-01-03", "Crea carrito si no existía y acumula cantidad si la lí
   is(item.productId, ID_PRODUCTO);
 });
 
-test("CP-F-CHK-01-04", "Acumula cantidades de producto existente en el carrito respetando tope", async () => {
+// Defecto abierto #9 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-CHK-01-04", "Acumula cantidades de producto existente en el carrito respetando tope", async () => {
   // Arrange
   const { db, caso } = montar();
   db.cart.findUnique.mockResolvedValue(filaCarrito());

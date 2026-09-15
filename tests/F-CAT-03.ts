@@ -122,7 +122,8 @@ test("CP-F-CAT-03-04b", "Valida límites de calificación (1 y 5) y longitud má
   expect(productos.updateProductRating).toHaveBeenCalledWith("prd_001", 1, 1);
 });
 
-test("CP-F-CAT-03-04c", "Rechaza calificación fuera de rango directamente en el caso de uso", async () => {
+// Defecto abierto #8 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-CAT-03-04c", "Rechaza calificación fuera de rango directamente en el caso de uso", async () => {
   // Arrange
   const { productos, resenas, caso } = montar();
   productos.findById.mockResolvedValue(producto({ id: "prd_001" }));

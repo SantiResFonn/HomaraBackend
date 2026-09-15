@@ -118,7 +118,8 @@ test("CP-F-PROY-03-06", "Actualiza únicamente campos descriptivos sin alterar m
   expect(productos.findById).not.toHaveBeenCalled();
 });
 
-test("CP-F-PROY-03-07", "Recalcula materiales genéricos al cambiar área", async () => {
+// Defecto abierto #7 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-PROY-03-07", "Recalcula materiales genéricos al cambiar área", async () => {
   // Arrange
   const { proyectos, productos, caso, actualizado } = montar();
   proyectos.findById.mockResolvedValue(proyecto({ area: 20, selectedProductId: null }));

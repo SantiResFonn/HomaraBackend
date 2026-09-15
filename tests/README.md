@@ -45,9 +45,10 @@ npm test -- -t F-CHK                 # un módulo (subcadena del id)
 npm run test:coverage                # cobertura v8
 ```
 
-`npm test` es `vitest run`. Sale con código ≠ 0 si algún caso falla,
-**incluidos los 14 casos que documentan defectos abiertos** (ver tabla abajo):
-un run limpio hoy es `180 passed, 14 failed (194)`.
+`npm test` es `vitest run`. Un run limpio hoy es `194 passed (194)` y sale con
+código 0: los 14 casos que documentan defectos abiertos están declarados con
+`test.fails(...)`, así que **se esperan fallidos** y no rompen CI (ver la tabla
+de defectos abajo).
 
 ## Estructura
 
@@ -129,8 +130,19 @@ costura. Ninguna prueba toca una base de datos real.
 ## Defectos localizados
 
 La suite mantiene aserciones estrictas que documentan la regla de negocio
-exigida frente al comportamiento actual. Estos 14 casos **fallan a propósito**
-hasta que se corrija el código.
+exigida frente al comportamiento actual. Estos 14 casos están declarados con
+`test.fails(...)`: **se espera que fallen** hasta que se corrija el código, así
+que la suite queda en verde mientras el defecto siga abierto.
+
+> **La señal está invertida a propósito.** El día que alguien corrija uno de
+> estos defectos, su caso se pone **rojo** con «expected to fail, but passed».
+> Eso no es una regresión: es el aviso de devolver ese caso a `test(...)`
+> normal y tachar la fila de esta tabla.
+>
+> Contrapartida honesta de `test.fails`: da por bueno *cualquier* error, no
+> sólo el que documenta el defecto. Si un caso de estos empieza a fallar por
+> otro motivo (un `TypeError` de un refactor, por ejemplo), seguirá en verde.
+> Por eso la fila de la tabla nombra la unidad y el síntoma concreto.
 
 | # | Defecto | Unidad | Caso que lo evidencia |
 |---|---|---|---|

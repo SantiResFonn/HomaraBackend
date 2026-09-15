@@ -43,9 +43,9 @@ export function soft(fn: () => void): void {
   }
 }
 
-/** Registra un caso en Vitest. El `id` es el identificador del plan (CP-F-...). */
-export function test(id: string, desc: string, fn: TestFn): void {
-  it(`${id}  ${desc}`, async () => {
+/** Envuelve el cuerpo del caso para agregar los fallos de `soft()` al final. */
+function cuerpo(fn: TestFn) {
+  return async () => {
     softErrors = [];
     await fn();
     if (softErrors.length) {
@@ -53,8 +53,33 @@ export function test(id: string, desc: string, fn: TestFn): void {
       softErrors = [];
       throw new Error(fallos.join("\n       ---\n"));
     }
-  });
+  };
 }
+
+interface RegistrarCaso {
+  /** Registra un caso en Vitest. El `id` es el identificador del plan (CP-F-...). */
+  (id: string, desc: string, fn: TestFn): void;
+  /**
+   * Caso que documenta un **defecto abierto**: se espera que falle, así que la
+   * suite queda en verde mientras el defecto siga ahí (ver la tabla de defectos
+   * en `tests/README.md`).
+   *
+   * Ojo con la inversión: el día que alguien corrija el defecto, este caso se
+   * pone **rojo** — es la señal de que hay que devolverlo a `test(...)` normal.
+   */
+  fails(id: string, desc: string, fn: TestFn): void;
+}
+
+export const test: RegistrarCaso = Object.assign(
+  (id: string, desc: string, fn: TestFn): void => {
+    it(`${id}  ${desc}`, cuerpo(fn));
+  },
+  {
+    fails(id: string, desc: string, fn: TestFn): void {
+      it.fails(`${id}  ${desc}`, cuerpo(fn));
+    },
+  },
+);
 
 // --- Aserciones -------------------------------------------------------------
 

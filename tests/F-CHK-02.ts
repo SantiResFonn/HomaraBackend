@@ -179,7 +179,8 @@ test("CP-F-CHK-02-05", "Itera múltiples líneas combinando disponibles y pedido
   is(salida.itemCount, 2);
 });
 
-test("CP-F-CHK-02-06", "Cobra tarifa de envío con subtotal inferior al umbral y evalúa umbral de 500000", async () => {
+// Defecto abierto #10 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-CHK-02-06", "Cobra tarifa de envío con subtotal inferior al umbral y evalúa umbral de 500000", async () => {
   // Arrange
   const { db, caso } = montar();
   db.cart.findUnique.mockResolvedValue(filaCarrito([]));

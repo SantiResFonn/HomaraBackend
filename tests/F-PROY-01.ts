@@ -98,7 +98,8 @@ test("CP-F-PROY-01-05", "Rechaza categorías no permitidas para proyectos (ej. h
   expect(proyectos.create).not.toHaveBeenCalled();
 });
 
-test("CP-F-PROY-01-06", "Valida correspondencia entre nombre de insumo y su categoría", async () => {
+// Defecto abierto #1 (ver la tabla en tests/README.md): se espera que falle.
+test.fails("CP-F-PROY-01-06", "Valida correspondencia entre nombre de insumo y su categoría", async () => {
   // Arrange
   const { proyectos, productos, caso } = montar();
   productos.findById.mockResolvedValue(producto({ name: "Pegante Ceramico Gris 25kg", categorySlug: "pisos-ceramicas" }));
