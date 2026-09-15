@@ -1,27 +1,31 @@
 // F-ADM-01 · Tablero de indicadores
 // Unidad: AdminController.getMetrics()  (GET /api/v1/admin/metrics)
 
+import { vi, beforeEach } from "vitest";
 import { test, is, eq, expect } from "./harness.js";
-import {
-  fakePrismaAdmin,
-  contextoExpress,
-  ordenEntregada,
-  itemVendido,
-  programarOrdenes,
-} from "./helpers.js";
-import { AdminController, setPrismaClientForTests } from "../src/infrastructure/http/controllers/admin.controller.js";
+import { contextoExpress, ordenEntregada, itemVendido, programarOrdenes } from "./helpers.js";
+import { mockPrisma, reiniciarRepositorios } from "./mocks/repositorios.js";
+import { AdminController } from "../src/infrastructure/http/controllers/admin.controller.js";
+
+// El controlador captura `prisma` al importarse: se mockea el módulo del
+// cliente para que devuelva el doble compartido.
+vi.mock("../src/infrastructure/database/prisma-client.js", async () => {
+  const { mockPrisma } = await import("./mocks/repositorios.js");
+  return { prisma: mockPrisma };
+});
+
+beforeEach(reiniciarRepositorios);
+
 
 const ANIO = new Date().getFullYear();
 
-/** Cliente Prisma falso con contadores por defecto, ya instalado en el controlador. */
+/** Programa los contadores por defecto del cliente Prisma mockeado. */
 function montar() {
-  const p = fakePrismaAdmin();
-  p.order.count.mockResolvedValue(7);
-  p.product.count.mockResolvedValue(42);
-  p.user.count.mockResolvedValue(5);
-  p.orderItem.findMany.mockResolvedValue([]);
-  setPrismaClientForTests(p);
-  return p;
+  mockPrisma.order.count.mockResolvedValue(7);
+  mockPrisma.product.count.mockResolvedValue(42);
+  mockPrisma.user.count.mockResolvedValue(5);
+  mockPrisma.orderItem.findMany.mockResolvedValue([]);
+  return mockPrisma;
 }
 
 test("CP-F-ADM-01-01", "Calcula variación de ventas respecto al mes anterior y categorías principales", async () => {

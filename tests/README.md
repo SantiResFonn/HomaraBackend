@@ -1,8 +1,10 @@
 # Pruebas del backend
 
-Suite sobre **Vitest**, con dobles de prueba (`vi.fn()`) detrás de una capa fina
-propia. Los casos siguen derivando del método de **cobertura de ruta básica de
-McCabe** (ISTQB, ISO/IEC/IEEE 29119); los ids del plan no cambiaron.
+Suite sobre **Vitest**. Los dobles son mocks de Vitest usados con su API a la
+vista (`vi.fn()`, `vi.mock()`), sin ninguna capa intermedia y sin costuras de
+prueba en el código de producción. Los casos siguen derivando del método de
+**cobertura de ruta básica de McCabe** (ISTQB, ISO/IEC/IEEE 29119); los ids del
+plan no cambiaron.
 
 Todos los casos están escritos con el **patrón AAA** (Arrange · Act · Assert),
 marcado explícitamente con comentarios en cada cuerpo de prueba:
@@ -12,7 +14,7 @@ test("CP-F-AUTH-01-02", "Rechaza registro si el correo ya existe", async () => {
   // Arrange
   const repo = fakeUsuarios();
   const caso = new RegisterUserUseCase(repo as any);
-  repo.findByEmail.resolves(usuario());
+  repo.findByEmail.mockResolvedValue(usuario());
 
   // Act
   const error = await grab(caso.execute(datosRegistro() as any));
@@ -20,7 +22,7 @@ test("CP-F-AUTH-01-02", "Rechaza registro si el correo ya existe", async () => {
   // Assert
   ok(error instanceof AppError);
   is(error.message, "El correo electrónico ya está registrado.");
-  ok(neverCalled(repo.create));
+  expect(repo.create).not.toHaveBeenCalled();
 });
 ```
 
@@ -28,7 +30,7 @@ Regla: el **Act** es una sola invocación de la unidad bajo prueba (o una por
 escenario, cuando el caso cubre varios); ninguna aserción vive antes de él. Si
 un escenario necesita rearmar un doble a mitad de camino, ese rearmado va en el
 Act con un comentario, y el valor que se va a comprobar se captura ahí mismo
-—antes de que un `reset()` lo borre.
+—antes de que un `mockReset()` lo borre.
 
 ## Cómo ejecutar
 
@@ -52,8 +54,9 @@ un run limpio hoy es `180 passed, 14 failed (194)`.
 | Archivo | Qué contiene |
 |---|---|
 | `vitest.config.ts` | `include: tests/**/*.ts` (menos `harness`/`helpers`), cobertura v8 y el alias que traduce los imports `"./x.js"` de ESM NodeNext a los `.ts` reales. |
-| `tests/harness.ts` | `test(id, desc, fn)` → `it()` de Vitest, aserciones cortas sobre `node:assert/strict` (`is`, `eq`, `ok`, `has`, `subset`, `grab`…), `soft()` para aserciones no abortivas, y re-export de `expect` / `vi` para casos nuevos. |
+| `tests/harness.ts` | `test(id, desc, fn)` → `it()` de Vitest, aserciones cortas sobre `node:assert/strict` (`is`, `eq`, `ok`, `has`, `subset`, `grab`…), `soft()` para aserciones no abortivas, y re-export de `expect` / `vi` para casos nuevos (salvo `vi.mock()`, que exige importar `vi` de `"vitest"`). |
 | `tests/helpers.ts` | Repositorios falsos como objetos de `vi.fn()` (`fakeUsuarios()`, `fakeCarritos()`…), fábricas de datos en español (`producto()`, `proyecto()`, `carrito()`…), `contextoExpress()` y `conRelojFijo()`. |
+| `tests/mocks/repositorios.ts` | Instancias de mock compartidas entre la prueba y el código bajo prueba, más `reiniciarRepositorios()`. Excluido del `include` de Vitest. |
 | `tests/F-<MODULO>-<NN>.ts` | Un archivo por unidad / grafo de flujo. |
 | `tests/unit-*.ts` | Pruebas unitarias de controladores, repositorios Prisma, middlewares, validadores y rutas. |
 
@@ -79,10 +82,36 @@ a la vista. Los repositorios falsos de `helpers.ts` son objetos planos de
 Recuento actual: 129 `vi.fn()`, 208 programaciones (`mock*Value*`), 97 lecturas
 de `.mock.calls` y 79 aserciones con matchers de mock.
 
-La inyección de Prisma se hace por costura, no por `vi.mock()`: cliente falso al
-constructor (`new PrismaCartRepository(dbFalso)`) o `set*ForTests()` en los
-controladores y en `middlewares/auth.ts`. Ninguna prueba toca una base de datos
-real.
+#### Mockeo de módulos
+
+Los controladores y `middlewares/auth.ts` construyen sus repositorios Prisma en
+el ámbito del módulo y se los pasan a los casos de uso al importarse. Para
+sustituirlos **no hay ninguna costura en producción**: se mockea el módulo, y el
+constructor devuelve el doble compartido de `tests/mocks/repositorios.ts`.
+
+```ts
+vi.mock("../src/infrastructure/database/repositories/prisma-cart.repository.js", async () => {
+  const { mockCarritos } = await import("./mocks/repositorios.js");
+  return { PrismaCartRepository: vi.fn(() => mockCarritos) };
+});
+
+beforeEach(reiniciarRepositorios);
+```
+
+Como los casos de uso capturan la referencia al importar, `reiniciarRepositorios()`
+no crea objetos nuevos: **renueva las propiedades del mismo objeto**, así cada caso
+arranca con mocks limpios sin romper esa referencia.
+
+`vi` se importa de `"vitest"` directamente en los archivos que usan `vi.mock()`:
+la llamada se hoistea y Vitest no reconoce un `vi` re-exportado por `harness.ts`.
+
+Archivos con `vi.mock()`: `unit-controllers.ts` (8 módulos), `unit-auth-middleware.ts`,
+`unit-routes-and-server.ts`, `F-AUTH-03`, `F-ADM-01`, `F-ADM-02`, `F-ADM-03`.
+
+Las pruebas de repositorio (`unit-prisma-repositories.ts`, `F-CAT-01`, `F-CHK-*`)
+siguen inyectando un cliente `db` falso por constructor
+(`new PrismaCartRepository(dbFalso)`), que es una dependencia declarada, no una
+costura. Ninguna prueba toca una base de datos real.
 
 ## Catálogo de casos
 

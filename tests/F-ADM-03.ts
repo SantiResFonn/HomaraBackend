@@ -1,14 +1,24 @@
 // F-ADM-03 · Inventario y stock
 // Unidad: AdminController.getInventoryReport()  (GET /api/v1/admin/inventory)
 
+import { vi, beforeEach } from "vitest";
 import { test, is, eq, subset, expect } from "./harness.js";
-import { fakePrismaAdmin, contextoExpress, filaProductoPrisma } from "./helpers.js";
-import { AdminController, setPrismaClientForTests } from "../src/infrastructure/http/controllers/admin.controller.js";
+import { contextoExpress, filaProductoPrisma } from "./helpers.js";
+import { mockPrisma, reiniciarRepositorios } from "./mocks/repositorios.js";
+import { AdminController } from "../src/infrastructure/http/controllers/admin.controller.js";
+
+// El controlador captura `prisma` al importarse: se mockea el módulo del
+// cliente para que devuelva el doble compartido.
+vi.mock("../src/infrastructure/database/prisma-client.js", async () => {
+  const { mockPrisma } = await import("./mocks/repositorios.js");
+  return { prisma: mockPrisma };
+});
+
+beforeEach(reiniciarRepositorios);
+
 
 async function reporteCon(productos: any[]) {
-  const p = fakePrismaAdmin();
-  p.product.findMany.mockResolvedValue(productos);
-  setPrismaClientForTests(p);
+  mockPrisma.product.findMany.mockResolvedValue(productos);
   const { req, res, next } = contextoExpress();
   await AdminController.getInventoryReport(req, res, next);
   return { cuerpo: res.body as any, next };

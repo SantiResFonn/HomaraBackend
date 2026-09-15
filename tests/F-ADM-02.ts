@@ -1,10 +1,12 @@
 // F-ADM-02 · Gestión de productos
 // Unidad: CreateProductUseCase.execute() y UpdateProductUseCase.execute()  (POST y PUT /api/v1/products)
 
+import { vi, beforeEach } from "vitest";
 import { test, is, eq, ok, subset, grab, expect } from "./harness.js";
-import { fakeProductos, fakeUsuarios, producto, datosProducto, contextoExpress, errorDeNext, usuario } from "./helpers.js";
+import { fakeProductos, producto, datosProducto, contextoExpress, errorDeNext, usuario } from "./helpers.js";
+import { mockUsuarios, reiniciarRepositorios } from "./mocks/repositorios.js";
 import jwt from "jsonwebtoken";
-import { requireAdmin, setUserRepositoryForTests } from "../src/infrastructure/http/middlewares/auth.js";
+import { requireAdmin } from "../src/infrastructure/http/middlewares/auth.js";
 import { CreateProductUseCase, UpdateProductUseCase } from "../src/application/use-cases/catalog.use-cases.js";
 import { createProductSchema, updateProductSchema } from "../src/infrastructure/http/validators/catalog.validator.js";
 import { AppError } from "../src/shared/errors/AppError.js";
@@ -19,12 +21,19 @@ function montar() {
   return { repo, crear, actualizar };
 }
 
+// `requireAdmin` re-consulta el usuario en la base: se mockea el repositorio
+// que el middleware construye al importarse.
+vi.mock("../src/infrastructure/database/repositories/prisma-user.repository.js", async () => {
+  const { mockUsuarios } = await import("./mocks/repositorios.js");
+  return { PrismaUserRepository: vi.fn(() => mockUsuarios) };
+});
+
+beforeEach(reiniciarRepositorios);
+
 test("CP-F-ADM-02-01", "Rechaza con 403 a usuarios con rol CUSTOMER antes de modificar productos", async () => {
   // Arrange
   const { repo } = montar();
-  const usuarios = fakeUsuarios();
-  usuarios.findById.mockResolvedValue(usuario({ role: "CUSTOMER" }));
-  setUserRepositoryForTests(usuarios as any);
+  mockUsuarios.findById.mockResolvedValue(usuario({ role: "CUSTOMER" }));
   const { req, res, next } = contextoExpress(
     `Bearer ${tokenDe({ id: "usr_001", email: "ana@homara.com", role: "ADMIN" })}`,
   );

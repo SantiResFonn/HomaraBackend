@@ -64,11 +64,19 @@ export const fakePedidos = () => ({
   countByYear: vi.fn(),
 });
 
-export const fakePrismaAdmin = () => ({
+export const fakeCategorias = () => ({
+  findAll: vi.fn(),
+  findBySlug: vi.fn(),
+  create: vi.fn(),
+});
+
+/** Doble del cliente Prisma: sólo los modelos que tocan los controladores. */
+export const fakePrismaCliente = () => ({
   order: { findMany: vi.fn(), count: vi.fn() },
   orderItem: { findMany: vi.fn() },
   product: { count: vi.fn(), findMany: vi.fn() },
   user: { count: vi.fn() },
+  project: { count: vi.fn() },
 });
 
 // --- Entidades y fábricas de datos ---------------------------------------
@@ -243,7 +251,7 @@ export function itemVendido(total: number, categoria = "Pisos y Ceramicas") {
 
 /** Programa las 3 llamadas secuenciales a `order.findMany` del tablero admin. */
 export function programarOrdenes(
-  p: ReturnType<typeof fakePrismaAdmin>,
+  p: ReturnType<typeof fakePrismaCliente>,
   o: { actual?: any[]; anterior?: any[]; anio?: any[] } = {},
 ) {
   p.order.findMany

@@ -4,7 +4,9 @@
 
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { test, is, ok, vi } from "./harness.js";
+import { vi, beforeEach } from "vitest";
+import { test, is, ok } from "./harness.js";
+import { mockCategorias, reiniciarRepositorios } from "./mocks/repositorios.js";
 import app from "../src/infrastructure/http/express-server.js";
 
 import categoriesRouter from "../src/infrastructure/http/routes/categories.js";
@@ -15,7 +17,15 @@ import ordersRouter from "../src/infrastructure/http/routes/orders.js";
 import usersRouter from "../src/infrastructure/http/routes/users.js";
 import adminRouter from "../src/infrastructure/http/routes/admin.js";
 
-import { setCatalogRepositoriesForTests } from "../src/infrastructure/http/controllers/catalog.controller.js";
+// El controlador de catálogo construye `new PrismaCategoryRepository()` al
+// importarse (vía express-server): se mockea el módulo para que devuelva el
+// doble compartido.
+vi.mock("../src/infrastructure/database/repositories/prisma-category.repository.js", async () => {
+  const { mockCategorias } = await import("./mocks/repositorios.js");
+  return { PrismaCategoryRepository: vi.fn(() => mockCategorias) };
+});
+
+beforeEach(reiniciarRepositorios);
 
 // Helper para extraer rutas y métodos de un Router de Express
 function obtenerRutas(router: any): Array<{ path: string; methods: string[] }> {
@@ -224,14 +234,9 @@ test("UNIT-ROUTES-ADM-01", "adminRouter define métricas e inventario", () => {
 
 test("UNIT-SRV-05", "Petición HTTP a /api/v1/categories devuelve listado de categorías", async () => {
   // Arrange
-  const fakeCatRepo = {
-    findAll: vi.fn(async () => [
-      { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" }
-    ]),
-    findBySlug: vi.fn(),
-    create: vi.fn(),
-  };
-  setCatalogRepositoriesForTests({ categoryRepo: fakeCatRepo as any });
+  mockCategorias.findAll.mockResolvedValue([
+    { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" },
+  ]);
 
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -254,14 +259,9 @@ test("UNIT-SRV-05", "Petición HTTP a /api/v1/categories devuelve listado de cat
 
 test("UNIT-SRV-06", "Petición HTTP con reescritura /api/categories funciona idénticamente", async () => {
   // Arrange
-  const fakeCatRepo = {
-    findAll: vi.fn(async () => [
-      { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" }
-    ]),
-    findBySlug: vi.fn(),
-    create: vi.fn(),
-  };
-  setCatalogRepositoriesForTests({ categoryRepo: fakeCatRepo as any });
+  mockCategorias.findAll.mockResolvedValue([
+    { id: "cat-1", name: "Pisos", slug: "pisos", description: "Pisos", icon: "p.jpg" },
+  ]);
 
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));

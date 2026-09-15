@@ -1,12 +1,71 @@
-import { test, is, eq, ok, vi } from "./harness.js";
-import { contextoExpress, fakeCarritos, fakePedidos, fakeProyectos, fakeProductos, fakeUsuarios, fakeResenas } from "./helpers.js";
-import { CartController, setCartRepositoryForTests } from "../src/infrastructure/http/controllers/cart.controller.js";
-import { OrderController, setOrderRepositoriesForTests } from "../src/infrastructure/http/controllers/order.controller.js";
-import { ProjectController, setProjectRepositoriesForTests } from "../src/infrastructure/http/controllers/project.controller.js";
-import { CatalogController, setCatalogRepositoriesForTests } from "../src/infrastructure/http/controllers/catalog.controller.js";
-import { AuthController, setAuthRepositoryForTests } from "../src/infrastructure/http/controllers/auth.controller.js";
-import { AdminController, setPrismaClientForTests as setAdminPrismaForTests } from "../src/infrastructure/http/controllers/admin.controller.js";
+import { vi, beforeEach } from "vitest";
+import { test, is, eq, ok } from "./harness.js";
+import { contextoExpress } from "./helpers.js";
+import {
+  mockCarritos,
+  mockPedidos,
+  mockProductos,
+  mockProyectos,
+  mockCategorias,
+  mockResenas,
+  mockUsuarios,
+  mockPrisma,
+  reiniciarRepositorios,
+} from "./mocks/repositorios.js";
+import { CartController } from "../src/infrastructure/http/controllers/cart.controller.js";
+import { OrderController } from "../src/infrastructure/http/controllers/order.controller.js";
+import { ProjectController } from "../src/infrastructure/http/controllers/project.controller.js";
+import { CatalogController } from "../src/infrastructure/http/controllers/catalog.controller.js";
+import { AuthController } from "../src/infrastructure/http/controllers/auth.controller.js";
+import { AdminController } from "../src/infrastructure/http/controllers/admin.controller.js";
 import { AppError } from "../src/shared/errors/AppError.js";
+
+// Los controladores construyen sus repositorios Prisma en el ámbito del módulo
+// y se los pasan a los casos de uso al importarse. Mockeando cada módulo, esos
+// constructores devuelven los dobles compartidos: no hace falta ninguna costura
+// en el código de producción.
+vi.mock("../src/infrastructure/database/repositories/prisma-cart.repository.js", async () => {
+  const { mockCarritos } = await import("./mocks/repositorios.js");
+  return { PrismaCartRepository: vi.fn(() => mockCarritos) };
+});
+
+vi.mock("../src/infrastructure/database/repositories/prisma-order.repository.js", async () => {
+  const { mockPedidos } = await import("./mocks/repositorios.js");
+  return { PrismaOrderRepository: vi.fn(() => mockPedidos) };
+});
+
+vi.mock("../src/infrastructure/database/repositories/prisma-product.repository.js", async () => {
+  const { mockProductos } = await import("./mocks/repositorios.js");
+  return { PrismaProductRepository: vi.fn(() => mockProductos) };
+});
+
+vi.mock("../src/infrastructure/database/repositories/prisma-project.repository.js", async () => {
+  const { mockProyectos } = await import("./mocks/repositorios.js");
+  return { PrismaProjectRepository: vi.fn(() => mockProyectos) };
+});
+
+vi.mock("../src/infrastructure/database/repositories/prisma-category.repository.js", async () => {
+  const { mockCategorias } = await import("./mocks/repositorios.js");
+  return { PrismaCategoryRepository: vi.fn(() => mockCategorias) };
+});
+
+vi.mock("../src/infrastructure/database/repositories/prisma-review.repository.js", async () => {
+  const { mockResenas } = await import("./mocks/repositorios.js");
+  return { PrismaReviewRepository: vi.fn(() => mockResenas) };
+});
+
+vi.mock("../src/infrastructure/database/repositories/prisma-user.repository.js", async () => {
+  const { mockUsuarios } = await import("./mocks/repositorios.js");
+  return { PrismaUserRepository: vi.fn(() => mockUsuarios) };
+});
+
+// `admin` y `auth` leen el cliente Prisma directamente.
+vi.mock("../src/infrastructure/database/prisma-client.js", async () => {
+  const { mockPrisma } = await import("./mocks/repositorios.js");
+  return { prisma: mockPrisma };
+});
+
+beforeEach(reiniciarRepositorios);
 
 // ============================================================================
 // CartController Tests
@@ -30,9 +89,7 @@ test("UNIT-CTRL-CART-01", "CartController.get retorna carrito vacío si no hay u
 
 test("UNIT-CTRL-CART-02", "CartController.get obtiene carrito si hay usuario autenticado", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findByUserId.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [] });
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findByUserId.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [] });
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
 
@@ -47,9 +104,7 @@ test("UNIT-CTRL-CART-02", "CartController.get obtiene carrito si hay usuario aut
 
 test("UNIT-CTRL-CART-03", "CartController.get delega errores a next", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findByUserId.mockRejectedValue(new Error("DB Down"));
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findByUserId.mockRejectedValue(new Error("DB Down"));
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
 
@@ -63,10 +118,8 @@ test("UNIT-CTRL-CART-03", "CartController.get delega errores a next", async () =
 
 test("UNIT-CTRL-CART-04", "CartController.addItem agrega producto y responde 201", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findByUserId.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [] });
-  fakeCart.addItem.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [{ id: "item-1", productId: "prd-1", quantity: 2 }] });
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findByUserId.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [] });
+  mockCarritos.addItem.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [{ id: "item-1", productId: "prd-1", quantity: 2 }] });
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.body = { productId: "prd-1", quantity: 2 };
@@ -82,9 +135,7 @@ test("UNIT-CTRL-CART-04", "CartController.addItem agrega producto y responde 201
 
 test("UNIT-CTRL-CART-05", "CartController.addItem delega errores a next", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findByUserId.mockRejectedValue(new Error("Error agregando"));
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findByUserId.mockRejectedValue(new Error("Error agregando"));
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.body = { productId: "prd-1", quantity: 2 };
@@ -99,10 +150,8 @@ test("UNIT-CTRL-CART-05", "CartController.addItem delega errores a next", async 
 
 test("UNIT-CTRL-CART-06", "CartController.updateItemQuantity actualiza cantidad y responde 200", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findItemOwner.mockResolvedValue("usr-1");
-  fakeCart.updateItemQuantity.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [{ id: "item-1", quantity: 5 }] });
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findItemOwner.mockResolvedValue("usr-1");
+  mockCarritos.updateItemQuantity.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [{ id: "item-1", quantity: 5 }] });
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.params = { itemId: "item-1" };
@@ -118,9 +167,7 @@ test("UNIT-CTRL-CART-06", "CartController.updateItemQuantity actualiza cantidad 
 
 test("UNIT-CTRL-CART-07", "CartController.updateItemQuantity delega error a next", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findItemOwner.mockRejectedValue(new Error("Error"));
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findItemOwner.mockRejectedValue(new Error("Error"));
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.params = { itemId: "item-1" };
@@ -135,10 +182,8 @@ test("UNIT-CTRL-CART-07", "CartController.updateItemQuantity delega error a next
 
 test("UNIT-CTRL-CART-08", "CartController.removeItem remueve item y responde 200", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findItemOwner.mockResolvedValue("usr-1");
-  fakeCart.removeItem.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [] });
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findItemOwner.mockResolvedValue("usr-1");
+  mockCarritos.removeItem.mockResolvedValue({ id: "cart-1", userId: "usr-1", items: [] });
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.params = { itemId: "item-1" };
@@ -153,9 +198,7 @@ test("UNIT-CTRL-CART-08", "CartController.removeItem remueve item y responde 200
 
 test("UNIT-CTRL-CART-09", "CartController.removeItem delega error a next", async () => {
   // Arrange
-  const fakeCart = fakeCarritos();
-  fakeCart.findItemOwner.mockRejectedValue(new Error("Error"));
-  setCartRepositoryForTests(fakeCart as any);
+  mockCarritos.findItemOwner.mockRejectedValue(new Error("Error"));
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.params = { itemId: "item-1" };
@@ -188,9 +231,7 @@ test("UNIT-CTRL-ORD-01", "OrderController.list retorna vacío si no hay userId",
 
 test("UNIT-CTRL-ORD-02", "OrderController.list lista pedidos para usuario autenticado", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  fakeOrder.findAll.mockResolvedValue([{ id: "ord-1", orderNumber: "ORD-1", status: "PENDIENTE", total: 100000, createdAt: new Date() }]);
-  setOrderRepositoriesForTests({ orderRepo: fakeOrder as any });
+  mockPedidos.findAll.mockResolvedValue([{ id: "ord-1", orderNumber: "ORD-1", status: "PENDIENTE", total: 100000, createdAt: new Date() }]);
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.query = { admin: "false" };
@@ -206,9 +247,7 @@ test("UNIT-CTRL-ORD-02", "OrderController.list lista pedidos para usuario autent
 
 test("UNIT-CTRL-ORD-03", "OrderController.list delega errores a next", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  fakeOrder.findAll.mockRejectedValue(new Error("DB Error"));
-  setOrderRepositoriesForTests({ orderRepo: fakeOrder as any });
+  mockPedidos.findAll.mockRejectedValue(new Error("DB Error"));
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.query = {};
@@ -222,8 +261,7 @@ test("UNIT-CTRL-ORD-03", "OrderController.list delega errores a next", async () 
 
 test("UNIT-CTRL-ORD-04", "OrderController.getDetail retorna detalle de pedido", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  fakeOrder.findByIdOrNumber.mockResolvedValue({
+  mockPedidos.findByIdOrNumber.mockResolvedValue({
     id: "ord-1",
     orderNumber: "ORD-2026-001",
     status: "PENDIENTE",
@@ -238,7 +276,6 @@ test("UNIT-CTRL-ORD-04", "OrderController.getDetail retorna detalle de pedido", 
     shippingNotes: null,
     createdAt: new Date()
   });
-  setOrderRepositoriesForTests({ orderRepo: fakeOrder as any });
   const { req, res, next } = contextoExpress();
   req.params = { id: "ord-1" };
 
@@ -253,9 +290,7 @@ test("UNIT-CTRL-ORD-04", "OrderController.getDetail retorna detalle de pedido", 
 
 test("UNIT-CTRL-ORD-05", "OrderController.getDetail delega error a next", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  fakeOrder.findByIdOrNumber.mockRejectedValue(new Error("No encontrado"));
-  setOrderRepositoriesForTests({ orderRepo: fakeOrder as any });
+  mockPedidos.findByIdOrNumber.mockRejectedValue(new Error("No encontrado"));
   const { req, res, next } = contextoExpress();
   req.params = { id: "ord-none" };
 
@@ -268,22 +303,14 @@ test("UNIT-CTRL-ORD-05", "OrderController.getDetail delega error a next", async 
 
 test("UNIT-CTRL-ORD-06", "OrderController.create crea orden y responde 201", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  const fakeCart = fakeCarritos();
-  const fakeProd = fakeProductos();
-  fakeCart.findByUserId.mockResolvedValue({
+  mockCarritos.findByUserId.mockResolvedValue({
     id: "cart-1",
     userId: "usr-1",
     items: [{ id: "ci-1", productId: "prd-1", quantity: 1, unitPrice: 50000, total: 50000 }]
   });
-  fakeProd.findById.mockResolvedValue({ id: "prd-1", price: 50000, inStock: true, stockQuantity: 10 });
-  fakeCart.getReservedQuantities.mockResolvedValue({});
-  fakeOrder.create.mockResolvedValue({ id: "ord-1", orderNumber: "ORD-2026-001", total: 75000 });
-  setOrderRepositoriesForTests({
-    orderRepo: fakeOrder as any,
-    cartRepo: fakeCart as any,
-    productRepo: fakeProd as any
-  });
+  mockProductos.findById.mockResolvedValue({ id: "prd-1", price: 50000, inStock: true, stockQuantity: 10 });
+  mockCarritos.getReservedQuantities.mockResolvedValue({});
+  mockPedidos.create.mockResolvedValue({ id: "ord-1", orderNumber: "ORD-2026-001", total: 75000 });
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.body = {
@@ -305,13 +332,7 @@ test("UNIT-CTRL-ORD-06", "OrderController.create crea orden y responde 201", asy
 
 test("UNIT-CTRL-ORD-07", "OrderController.create delega error a next", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  const fakeCart = fakeCarritos();
-  fakeCart.findByUserId.mockRejectedValue(new Error("Cart error"));
-  setOrderRepositoriesForTests({
-    orderRepo: fakeOrder as any,
-    cartRepo: fakeCart as any
-  });
+  mockCarritos.findByUserId.mockRejectedValue(new Error("Cart error"));
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
   req.body = {};
@@ -325,9 +346,7 @@ test("UNIT-CTRL-ORD-07", "OrderController.create delega error a next", async () 
 
 test("UNIT-CTRL-ORD-08", "OrderController.updateStatus actualiza estado y responde 200", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  fakeOrder.updateStatus.mockResolvedValue({ id: "ord-1", status: "ENVIADO" });
-  setOrderRepositoriesForTests({ orderRepo: fakeOrder as any });
+  mockPedidos.updateStatus.mockResolvedValue({ id: "ord-1", status: "ENVIADO" });
   const { req, res, next } = contextoExpress();
   req.params = { id: "ord-1" };
   req.body = { status: "ENVIADO" };
@@ -343,9 +362,7 @@ test("UNIT-CTRL-ORD-08", "OrderController.updateStatus actualiza estado y respon
 
 test("UNIT-CTRL-ORD-09", "OrderController.updateStatus delega error a next", async () => {
   // Arrange
-  const fakeOrder = fakePedidos();
-  fakeOrder.updateStatus.mockRejectedValue(new Error("Invalid status"));
-  setOrderRepositoriesForTests({ orderRepo: fakeOrder as any });
+  mockPedidos.updateStatus.mockRejectedValue(new Error("Invalid status"));
   const { req, res, next } = contextoExpress();
   req.params = { id: "ord-1" };
   req.body = { status: "INVALID" };
@@ -378,9 +395,7 @@ test("UNIT-CTRL-PROY-01", "ProjectController.list retorna vacío si no hay userI
 
 test("UNIT-CTRL-PROY-02", "ProjectController.list lista proyectos de usuario", async () => {
   // Arrange
-  const fakeProy = fakeProyectos();
-  fakeProy.findAllByUserId.mockResolvedValue([{ id: "p-1", name: "Baño" }]);
-  setProjectRepositoriesForTests({ projectRepo: fakeProy as any });
+  mockProyectos.findAllByUserId.mockResolvedValue([{ id: "p-1", name: "Baño" }]);
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
 
@@ -394,9 +409,7 @@ test("UNIT-CTRL-PROY-02", "ProjectController.list lista proyectos de usuario", a
 
 test("UNIT-CTRL-PROY-03", "ProjectController.list delega error a next", async () => {
   // Arrange
-  const fakeProy = fakeProyectos();
-  fakeProy.findAllByUserId.mockRejectedValue(new Error("Error"));
-  setProjectRepositoriesForTests({ projectRepo: fakeProy as any });
+  mockProyectos.findAllByUserId.mockRejectedValue(new Error("Error"));
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
 
@@ -409,9 +422,7 @@ test("UNIT-CTRL-PROY-03", "ProjectController.list delega error a next", async ()
 
 test("UNIT-CTRL-PROY-04", "ProjectController.getDetail retorna proyecto y maneja error", async () => {
   // Arrange
-  const fakeProy = fakeProyectos();
-  fakeProy.findById.mockResolvedValue({ id: "p-1", name: "Cocina" });
-  setProjectRepositoriesForTests({ projectRepo: fakeProy as any });
+  mockProyectos.findById.mockResolvedValue({ id: "p-1", name: "Cocina" });
 
   const { req, res, next } = contextoExpress();
   req.params = { id: "p-1" };
@@ -422,7 +433,7 @@ test("UNIT-CTRL-PROY-04", "ProjectController.getDetail retorna proyecto y maneja
   await ProjectController.getDetail(req, res, next);
 
   // Error case
-  fakeProy.findById.mockRejectedValue(new Error("No encontrado"));
+  mockProyectos.findById.mockRejectedValue(new Error("No encontrado"));
   await ProjectController.getDetail(ctxErr.req, ctxErr.res, ctxErr.next);
 
   // Assert
@@ -433,9 +444,7 @@ test("UNIT-CTRL-PROY-04", "ProjectController.getDetail retorna proyecto y maneja
 
 test("UNIT-CTRL-PROY-05", "ProjectController.create crea proyecto y responde 201", async () => {
   // Arrange
-  const fakeProy = fakeProyectos();
-  fakeProy.create.mockResolvedValue({ id: "p-new", name: "Sala", userId: "usr-1" });
-  setProjectRepositoriesForTests({ projectRepo: fakeProy as any });
+  mockProyectos.create.mockResolvedValue({ id: "p-new", name: "Sala", userId: "usr-1" });
 
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
@@ -448,7 +457,7 @@ test("UNIT-CTRL-PROY-05", "ProjectController.create crea proyecto y responde 201
   await ProjectController.create(req, res, next);
 
   // Error delegation
-  fakeProy.create.mockRejectedValue(new Error("Creation failed"));
+  mockProyectos.create.mockRejectedValue(new Error("Creation failed"));
   await ProjectController.create(ctxErr.req, ctxErr.res, ctxErr.next);
 
   // Assert
@@ -459,10 +468,8 @@ test("UNIT-CTRL-PROY-05", "ProjectController.create crea proyecto y responde 201
 
 test("UNIT-CTRL-PROY-06", "ProjectController.update actualiza proyecto y delega error", async () => {
   // Arrange
-  const fakeProy = fakeProyectos();
-  fakeProy.findById.mockResolvedValue({ id: "p-1", userId: "usr-1", name: "Sala" });
-  fakeProy.update.mockResolvedValue({ id: "p-1", name: "Sala Grande" });
-  setProjectRepositoriesForTests({ projectRepo: fakeProy as any });
+  mockProyectos.findById.mockResolvedValue({ id: "p-1", userId: "usr-1", name: "Sala" });
+  mockProyectos.update.mockResolvedValue({ id: "p-1", name: "Sala Grande" });
 
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
@@ -477,7 +484,7 @@ test("UNIT-CTRL-PROY-06", "ProjectController.update actualiza proyecto y delega 
   await ProjectController.update(req, res, next);
 
   // Error case
-  fakeProy.findById.mockRejectedValue(new Error("Fail"));
+  mockProyectos.findById.mockRejectedValue(new Error("Fail"));
   await ProjectController.update(ctxErr.req, ctxErr.res, ctxErr.next);
 
   // Assert
@@ -488,10 +495,8 @@ test("UNIT-CTRL-PROY-06", "ProjectController.update actualiza proyecto y delega 
 
 test("UNIT-CTRL-PROY-07", "ProjectController.delete borra proyecto y delega error", async () => {
   // Arrange
-  const fakeProy = fakeProyectos();
-  fakeProy.findById.mockResolvedValue({ id: "p-1", userId: "usr-1" });
-  fakeProy.delete.mockResolvedValue();
-  setProjectRepositoriesForTests({ projectRepo: fakeProy as any });
+  mockProyectos.findById.mockResolvedValue({ id: "p-1", userId: "usr-1" });
+  mockProyectos.delete.mockResolvedValue();
 
   const { req, res, next } = contextoExpress();
   req.user = { id: "usr-1" };
@@ -504,7 +509,7 @@ test("UNIT-CTRL-PROY-07", "ProjectController.delete borra proyecto y delega erro
   await ProjectController.delete(req, res, next);
 
   // Error case
-  fakeProy.findById.mockRejectedValue(new Error("Error borrando"));
+  mockProyectos.findById.mockRejectedValue(new Error("Error borrando"));
   await ProjectController.delete(ctxErr.req, ctxErr.res, ctxErr.next);
 
   // Assert
@@ -518,18 +523,10 @@ test("UNIT-CTRL-PROY-07", "ProjectController.delete borra proyecto y delega erro
 
 test("UNIT-CTRL-CAT-01", "CatalogController.listCategories y listProducts funcionan y delegan errores", async () => {
   // Arrange
-  const fakeCategoryRepo = { findAll: vi.fn(async () => [{ id: "cat-1", name: "Pisos" }]) };
-  const fakeProductRepo = fakeProductos();
-  const fakeCartRepo = fakeCarritos();
+  mockCategorias.findAll.mockResolvedValue([{ id: "cat-1", name: "Pisos" }]);
 
-  fakeProductRepo.findAll.mockResolvedValue([{ id: "prd-1", name: "Piso Blanco" }]);
-  fakeCartRepo.getReservedQuantities.mockResolvedValue({});
-
-  setCatalogRepositoriesForTests({
-    categoryRepo: fakeCategoryRepo as any,
-    productRepo: fakeProductRepo as any,
-    cartRepo: fakeCartRepo as any
-  });
+  mockProductos.findAll.mockResolvedValue([{ id: "prd-1", name: "Piso Blanco" }]);
+  mockCarritos.getReservedQuantities.mockResolvedValue({});
 
   // listCategories
   const ctxCat = contextoExpress();
@@ -545,12 +542,12 @@ test("UNIT-CTRL-CAT-01", "CatalogController.listCategories y listProducts funcio
   await CatalogController.listCategories(ctxCat.req, ctxCat.res, ctxCat.next);
 
   // listCategories error
-  fakeCategoryRepo.findAll.mockRejectedValue(new Error("Cat err"));
+  mockCategorias.findAll.mockRejectedValue(new Error("Cat err"));
   await CatalogController.listCategories(ctxCatErr.req, ctxCatErr.res, ctxCatErr.next);
   await CatalogController.listProducts(ctxProd.req, ctxProd.res, ctxProd.next);
 
   // listProducts error
-  fakeProductRepo.findAll.mockRejectedValue(new Error("Prod err"));
+  mockProductos.findAll.mockRejectedValue(new Error("Prod err"));
   await CatalogController.listProducts(ctxProdErr.req, ctxProdErr.res, ctxProdErr.next);
 
   // Assert
@@ -564,18 +561,11 @@ test("UNIT-CTRL-CAT-01", "CatalogController.listCategories y listProducts funcio
 
 test("UNIT-CTRL-CAT-02", "CatalogController.getProductDetail y getStorefrontProducts", async () => {
   // Arrange
-  const fakeProductRepo = fakeProductos();
-  const fakeCartRepo = fakeCarritos();
-  fakeProductRepo.findById.mockResolvedValue({ id: "prd-1", name: "Piso" });
-  fakeCartRepo.getReservedQuantities.mockResolvedValue({});
-  fakeProductRepo.findStorefrontRecommended.mockResolvedValue([{ id: "r1" }]);
-  fakeProductRepo.findStorefrontOffers.mockResolvedValue([{ id: "o1" }]);
-  fakeProductRepo.findStorefrontBestSellers.mockResolvedValue([{ id: "b1" }]);
-
-  setCatalogRepositoriesForTests({
-    productRepo: fakeProductRepo as any,
-    cartRepo: fakeCartRepo as any
-  });
+  mockProductos.findById.mockResolvedValue({ id: "prd-1", name: "Piso" });
+  mockCarritos.getReservedQuantities.mockResolvedValue({});
+  mockProductos.findStorefrontRecommended.mockResolvedValue([{ id: "r1" }]);
+  mockProductos.findStorefrontOffers.mockResolvedValue([{ id: "o1" }]);
+  mockProductos.findStorefrontBestSellers.mockResolvedValue([{ id: "b1" }]);
 
   // getProductDetail
   const ctxDet = contextoExpress();
@@ -591,12 +581,12 @@ test("UNIT-CTRL-CAT-02", "CatalogController.getProductDetail y getStorefrontProd
   await CatalogController.getProductDetail(ctxDet.req, ctxDet.res, ctxDet.next);
 
   // getProductDetail error
-  fakeProductRepo.findById.mockRejectedValue(new Error("Det err"));
+  mockProductos.findById.mockRejectedValue(new Error("Det err"));
   await CatalogController.getProductDetail(ctxDetErr.req, ctxDetErr.res, ctxDetErr.next);
   await CatalogController.getStorefrontProducts(ctxStore.req, ctxStore.res, ctxStore.next);
 
   // getStorefrontProducts error
-  fakeProductRepo.findStorefrontRecommended.mockRejectedValue(new Error("Store err"));
+  mockProductos.findStorefrontRecommended.mockRejectedValue(new Error("Store err"));
   await CatalogController.getStorefrontProducts(ctxStoreErr.req, ctxStoreErr.res, ctxStoreErr.next);
 
   // Assert
@@ -610,23 +600,16 @@ test("UNIT-CTRL-CAT-02", "CatalogController.getProductDetail y getStorefrontProd
 
 test("UNIT-CTRL-CAT-03", "CatalogController CRUD productos y reseñas de catálogo", async () => {
   // Arrange
-  const fakeProductRepo = fakeProductos();
-  const fakeReviewRepo = fakeResenas();
 
-  fakeReviewRepo.findByProductId.mockResolvedValue([{ id: "rev-1", rating: 5 }]);
-  fakeReviewRepo.findByUserAndProduct.mockResolvedValue(null);
-  fakeProductRepo.findById.mockResolvedValue({ id: "prd-1", name: "Piso" });
-  fakeReviewRepo.create.mockResolvedValue({ id: "rev-1", rating: 5, comment: "Buenisimo" });
-  fakeReviewRepo.getAverageRatingAndCount.mockResolvedValue({ average: 5, count: 1 });
-  fakeProductRepo.updateProductRating.mockResolvedValue();
-  fakeProductRepo.create.mockResolvedValue({ id: "prd-new", name: "Nuevo" });
-  fakeProductRepo.update.mockResolvedValue({ id: "prd-1", name: "Modificado" });
-  fakeProductRepo.delete.mockResolvedValue();
-
-  setCatalogRepositoriesForTests({
-    productRepo: fakeProductRepo as any,
-    reviewRepo: fakeReviewRepo as any
-  });
+  mockResenas.findByProductId.mockResolvedValue([{ id: "rev-1", rating: 5 }]);
+  mockResenas.findByUserAndProduct.mockResolvedValue(null);
+  mockProductos.findById.mockResolvedValue({ id: "prd-1", name: "Piso" });
+  mockResenas.create.mockResolvedValue({ id: "rev-1", rating: 5, comment: "Buenisimo" });
+  mockResenas.getAverageRatingAndCount.mockResolvedValue({ average: 5, count: 1 });
+  mockProductos.updateProductRating.mockResolvedValue();
+  mockProductos.create.mockResolvedValue({ id: "prd-new", name: "Nuevo" });
+  mockProductos.update.mockResolvedValue({ id: "prd-1", name: "Modificado" });
+  mockProductos.delete.mockResolvedValue();
 
   // getProductReviews
   const ctxRevList = contextoExpress();
@@ -672,23 +655,23 @@ test("UNIT-CTRL-CAT-03", "CatalogController CRUD productos y reseñas de catálo
   await CatalogController.deleteProduct(ctxProdDel.req, ctxProdDel.res, ctxProdDel.next);
 
   // Delega errores a next en delete
-  fakeProductRepo.delete.mockRejectedValue(new Error("Del err"));
+  mockProductos.delete.mockRejectedValue(new Error("Del err"));
   await CatalogController.deleteProduct(ctxDelErr.req, ctxDelErr.res, ctxDelErr.next);
 
   // Delega errores en createReview
-  fakeReviewRepo.findByUserAndProduct.mockRejectedValue(new Error("Rev err"));
+  mockResenas.findByUserAndProduct.mockRejectedValue(new Error("Rev err"));
   await CatalogController.createReview(ctxRevErr.req, ctxRevErr.res, ctxRevErr.next);
 
   // Delega errores en getProductReviews
-  fakeReviewRepo.findByProductId.mockRejectedValue(new Error("Rev list err"));
+  mockResenas.findByProductId.mockRejectedValue(new Error("Rev list err"));
   await CatalogController.getProductReviews(ctxRevListErr.req, ctxRevListErr.res, ctxRevListErr.next);
 
   // Delega errores en createProduct
-  fakeProductRepo.create.mockRejectedValue(new Error("Create prod err"));
+  mockProductos.create.mockRejectedValue(new Error("Create prod err"));
   await CatalogController.createProduct(ctxProdCreateErr.req, ctxProdCreateErr.res, ctxProdCreateErr.next);
 
   // Delega errores en updateProduct
-  fakeProductRepo.update.mockRejectedValue(new Error("Update prod err"));
+  mockProductos.update.mockRejectedValue(new Error("Update prod err"));
   await CatalogController.updateProduct(ctxProdUpdErr.req, ctxProdUpdErr.res, ctxProdUpdErr.next);
 
   // Assert
@@ -710,11 +693,8 @@ test("UNIT-CTRL-CAT-03", "CatalogController CRUD productos y reseñas de catálo
 
 test("UNIT-CTRL-AUTH-01", "AuthController.register y login exitosos", async () => {
   // Arrange
-  const fakeUserRepo = fakeUsuarios();
-  fakeUserRepo.findByEmail.mockResolvedValue(null);
-  fakeUserRepo.create.mockResolvedValue({ id: "usr-new", email: "new@homara.co", role: "CUSTOMER" });
-
-  setAuthRepositoryForTests(fakeUserRepo as any);
+  mockUsuarios.findByEmail.mockResolvedValue(null);
+  mockUsuarios.create.mockResolvedValue({ id: "usr-new", email: "new@homara.co", role: "CUSTOMER" });
 
   // Register
   const ctxReg = contextoExpress();
@@ -726,7 +706,7 @@ test("UNIT-CTRL-AUTH-01", "AuthController.register y login exitosos", async () =
   await AuthController.register(ctxReg.req, ctxReg.res, ctxReg.next);
 
   // Register error delegation
-  fakeUserRepo.findByEmail.mockRejectedValue(new Error("Reg err"));
+  mockUsuarios.findByEmail.mockRejectedValue(new Error("Reg err"));
   await AuthController.register(ctxRegErr.req, ctxRegErr.res, ctxRegErr.next);
 
   // Assert
@@ -737,13 +717,10 @@ test("UNIT-CTRL-AUTH-01", "AuthController.register y login exitosos", async () =
 
 test("UNIT-CTRL-AUTH-02", "AuthController.getMe y getById formatean perfil", async () => {
   // Arrange
-  const fakeUserRepo = fakeUsuarios();
-  const fakeDb = {
-    project: { count: vi.fn(async () => 3) },
-    order: { count: vi.fn(async () => 5) }
-  };
+  mockPrisma.project.count.mockResolvedValue(3);
+  mockPrisma.order.count.mockResolvedValue(5);
 
-  fakeUserRepo.findById.mockResolvedValue({
+  mockUsuarios.findById.mockResolvedValue({
     id: "usr-1",
     email: "user@homara.co",
     firstName: "Carlos",
@@ -751,8 +728,6 @@ test("UNIT-CTRL-AUTH-02", "AuthController.getMe y getById formatean perfil", asy
     role: "CUSTOMER",
     createdAt: new Date()
   });
-
-  setAuthRepositoryForTests(fakeUserRepo as any, fakeDb);
 
   // getMe
   const ctxMe = contextoExpress();
@@ -776,7 +751,7 @@ test("UNIT-CTRL-AUTH-02", "AuthController.getMe y getById formatean perfil", asy
   await AuthController.getById(ctxByIdOther.req, ctxByIdOther.res, ctxByIdOther.next);
 
   // getById error delegation
-  fakeUserRepo.findById.mockRejectedValue(new Error("Find err"));
+  mockUsuarios.findById.mockRejectedValue(new Error("Find err"));
   await AuthController.getById(ctxErr.req, ctxErr.res, ctxErr.next);
 
   // Assert
@@ -791,10 +766,7 @@ test("UNIT-CTRL-AUTH-02", "AuthController.getMe y getById formatean perfil", asy
 
 test("UNIT-CTRL-AUTH-03", "AuthController.update restringe acceso y actualiza campos permitidos", async () => {
   // Arrange
-  const fakeUserRepo = fakeUsuarios();
-  fakeUserRepo.update.mockResolvedValue({ id: "usr-1", firstName: "NuevoNombre" });
-
-  setAuthRepositoryForTests(fakeUserRepo as any);
+  mockUsuarios.update.mockResolvedValue({ id: "usr-1", firstName: "NuevoNombre" });
 
   // No autorizado (intenta modificar otro perfil sin ser admin)
   const ctxForbidden = contextoExpress();
@@ -835,30 +807,16 @@ test("UNIT-CTRL-AUTH-03", "AuthController.update restringe acceso y actualiza ca
 
 test("UNIT-CTRL-ADM-01", "AdminController.getMetrics calcula métricas y delega errores a next", async () => {
   // Arrange
-  const fakeDb = {
-    order: {
-      findMany: vi.fn()
-        .mockResolvedValueOnce([{ total: 100000, status: "ENTREGADO" }])
-        .mockResolvedValueOnce([{ total: 80000, status: "ENTREGADO" }])
-        .mockResolvedValueOnce([
-          { total: 100000, createdAt: new Date() }
-        ]),
-      count: vi.fn(async () => 5)
-    },
-    orderItem: {
-      findMany: vi.fn(async () => [
-        { total: 50000, product: { category: { name: "Pisos" } } }
-      ])
-    },
-    product: {
-      count: vi.fn(async () => 40)
-    },
-    user: {
-      count: vi.fn(async () => 12)
-    }
-  };
-
-  setAdminPrismaForTests(fakeDb);
+  mockPrisma.order.findMany
+    .mockResolvedValueOnce([{ total: 100000, status: "ENTREGADO" }])
+    .mockResolvedValueOnce([{ total: 80000, status: "ENTREGADO" }])
+    .mockResolvedValueOnce([{ total: 100000, createdAt: new Date() }]);
+  mockPrisma.order.count.mockResolvedValue(5);
+  mockPrisma.orderItem.findMany.mockResolvedValue([
+    { total: 50000, product: { category: { name: "Pisos" } } },
+  ]);
+  mockPrisma.product.count.mockResolvedValue(40);
+  mockPrisma.user.count.mockResolvedValue(12);
 
   // Success
   const ctx = contextoExpress();
@@ -868,7 +826,7 @@ test("UNIT-CTRL-ADM-01", "AdminController.getMetrics calcula métricas y delega 
   await AdminController.getMetrics(ctx.req, ctx.res, ctx.next);
 
   // Error delegation
-  fakeDb.order.findMany.mockRejectedValue(new Error("Metrics DB Err"));
+  mockPrisma.order.findMany.mockRejectedValue(new Error("Metrics DB Err"));
   await AdminController.getMetrics(ctxErr.req, ctxErr.res, ctxErr.next);
 
   // Assert
@@ -884,18 +842,12 @@ test("UNIT-CTRL-ADM-01", "AdminController.getMetrics calcula métricas y delega 
 
 test("UNIT-CTRL-ADM-02", "AdminController.getInventoryReport genera estadísticas de inventario y delega errores", async () => {
   // Arrange
-  const fakeDb = {
-    product: {
-      findMany: vi.fn(async () => [
-        { id: "p1", name: "Piso", category: { name: "Pisos" }, stockQuantity: 60, unit: "m²", price: 50000, inStock: true },
-        { id: "p2", name: "Pintura", category: { name: "Pinturas" }, stockQuantity: 20, unit: "galon", price: 30000, inStock: true },
-        { id: "p3", name: "Tornillos", category: { name: "Fijaciones" }, stockQuantity: 0, unit: "caja", price: 5000, inStock: false },
-        { id: "p4", name: "Defectuoso", category: { name: "Varios" }, stockQuantity: -2, unit: "u", price: 1000, inStock: false },
-      ])
-    }
-  };
-
-  setAdminPrismaForTests(fakeDb);
+  mockPrisma.product.findMany.mockResolvedValue([
+    { id: "p1", name: "Piso", category: { name: "Pisos" }, stockQuantity: 60, unit: "m²", price: 50000, inStock: true },
+    { id: "p2", name: "Pintura", category: { name: "Pinturas" }, stockQuantity: 20, unit: "galon", price: 30000, inStock: true },
+    { id: "p3", name: "Tornillos", category: { name: "Fijaciones" }, stockQuantity: 0, unit: "caja", price: 5000, inStock: false },
+    { id: "p4", name: "Defectuoso", category: { name: "Varios" }, stockQuantity: -2, unit: "u", price: 1000, inStock: false },
+  ]);
 
   // Success
   const ctx = contextoExpress();
@@ -905,7 +857,7 @@ test("UNIT-CTRL-ADM-02", "AdminController.getInventoryReport genera estadística
   await AdminController.getInventoryReport(ctx.req, ctx.res, ctx.next);
 
   // Error delegation
-  fakeDb.product.findMany.mockRejectedValue(new Error("Inventory DB Err"));
+  mockPrisma.product.findMany.mockRejectedValue(new Error("Inventory DB Err"));
   await AdminController.getInventoryReport(ctxErr.req, ctxErr.res, ctxErr.next);
 
   // Assert

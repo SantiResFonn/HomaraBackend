@@ -3,26 +3,29 @@
 //
 // Patrón AAA en cada caso: Arrange / Act / Assert.
 
+import { vi, beforeEach } from "vitest";
 import { test, is, eq, ok, has, subset, expect } from "./harness.js";
-import { fakeUsuarios, usuario, contextoExpress, errorDeNext } from "./helpers.js";
+import { usuario, contextoExpress, errorDeNext } from "./helpers.js";
+import { mockUsuarios, reiniciarRepositorios } from "./mocks/repositorios.js";
 import jwt from "jsonwebtoken";
-import { requireAuth, requireAdmin, setUserRepositoryForTests } from "../src/infrastructure/http/middlewares/auth.js";
+import { requireAuth, requireAdmin } from "../src/infrastructure/http/middlewares/auth.js";
 import { AppError } from "../src/shared/errors/AppError.js";
 
 const SECRETO = process.env.JWT_SECRET || "homara_jwt_secret_key_2026_secure";
 const tokenDe = (payload: object, opciones: jwt.SignOptions = { expiresIn: "7d" }) =>
   jwt.sign(payload, SECRETO, opciones);
 
-/** Instala un repositorio de usuarios falso y lo devuelve. */
-function instalarRepo() {
-  const repo = fakeUsuarios();
-  setUserRepositoryForTests(repo as any);
-  return repo;
-}
+// El middleware construye `new PrismaUserRepository()` al importarse; se mockea
+// el módulo para que ese constructor devuelva el doble compartido.
+vi.mock("../src/infrastructure/database/repositories/prisma-user.repository.js", async () => {
+  const { mockUsuarios } = await import("./mocks/repositorios.js");
+  return { PrismaUserRepository: vi.fn(() => mockUsuarios) };
+});
+
+beforeEach(reiniciarRepositorios);
 
 test("CP-F-AUTH-03-01", "Retorna 401 si no se provee cabecera Authorization", async () => {
   // Arrange
-  const repo = instalarRepo();
   const { req, res, next } = contextoExpress();
 
   // Act
@@ -33,12 +36,11 @@ test("CP-F-AUTH-03-01", "Retorna 401 si no se provee cabecera Authorization", as
   ok(error instanceof AppError);
   is(error.statusCode, 401);
   is(error.message, "Token no provisto.");
-  expect(repo.findById).not.toHaveBeenCalled();
+  expect(mockUsuarios.findById).not.toHaveBeenCalled();
 });
 
 test("CP-F-AUTH-03-02", "Retorna error cuando el token JWT ha caducado", async () => {
   // Arrange
-  const repo = instalarRepo();
   const caducado = tokenDe({ id: "usr_001", email: "ana@homara.com", role: "CUSTOMER" }, { expiresIn: "-1s" });
   const { req, res, next } = contextoExpress(`Bearer ${caducado}`);
 
@@ -47,13 +49,12 @@ test("CP-F-AUTH-03-02", "Retorna error cuando el token JWT ha caducado", async (
 
   // Assert
   ok(errorDeNext(next) instanceof jwt.TokenExpiredError);
-  expect(repo.findById).not.toHaveBeenCalled();
+  expect(mockUsuarios.findById).not.toHaveBeenCalled();
 });
 
 test("CP-F-AUTH-03-03", "Retorna 401 si el usuario asociado al token no existe en la base de datos", async () => {
   // Arrange
-  const repo = instalarRepo();
-  repo.findById.mockResolvedValue(null);
+  mockUsuarios.findById.mockResolvedValue(null);
   const { req, res, next } = contextoExpress(
     `Bearer ${tokenDe({ id: "usr_borrado", email: "x@homara.com", role: "CUSTOMER" })}`,
   );
@@ -70,8 +71,7 @@ test("CP-F-AUTH-03-03", "Retorna 401 si el usuario asociado al token no existe e
 
 test("CP-F-AUTH-03-04", "Retorna 403 cuando un usuario cliente intenta acceder a rutas de administración", async () => {
   // Arrange
-  const repo = instalarRepo();
-  repo.findById.mockResolvedValue(usuario({ role: "CUSTOMER" }));
+  mockUsuarios.findById.mockResolvedValue(usuario({ role: "CUSTOMER" }));
   const { req, res, next } = contextoExpress(
     `Bearer ${tokenDe({ id: "usr_001", email: "ana@homara.com", role: "ADMIN" })}`,
   );
@@ -87,8 +87,7 @@ test("CP-F-AUTH-03-04", "Retorna 403 cuando un usuario cliente intenta acceder a
 
 test("CP-F-AUTH-03-05", "Permite el acceso cuando el usuario tiene rol ADMIN en base de datos", async () => {
   // Arrange
-  const repo = instalarRepo();
-  repo.findById.mockResolvedValue(usuario({ role: "ADMIN" }));
+  mockUsuarios.findById.mockResolvedValue(usuario({ role: "ADMIN" }));
   const { req, res, next } = contextoExpress(
     `Bearer ${tokenDe({ id: "usr_001", email: "ana@homara.com", role: "ADMIN" })}`,
   );
@@ -103,8 +102,7 @@ test("CP-F-AUTH-03-05", "Permite el acceso cuando el usuario tiene rol ADMIN en 
 
 test("CP-F-AUTH-03-06", "Traduce fallos internos no controlados a error 500", async () => {
   // Arrange
-  const repo = instalarRepo();
-  repo.findById.mockRejectedValue(new TypeError("la base de datos no responde"));
+  mockUsuarios.findById.mockRejectedValue(new TypeError("la base de datos no responde"));
   const { req, res, next } = contextoExpress(
     `Bearer ${tokenDe({ id: "usr_001", email: "ana@homara.com", role: "CUSTOMER" })}`,
   );
@@ -121,8 +119,7 @@ test("CP-F-AUTH-03-06", "Traduce fallos internos no controlados a error 500", as
 
 test("CP-F-AUTH-03-04b", "Valida el rol real de base de datos ignorando el payload del token", async () => {
   // Arrange — el token dice ADMIN, la base de datos dice CUSTOMER.
-  const repo = instalarRepo();
-  repo.findById.mockResolvedValue(usuario({ role: "CUSTOMER" }));
+  mockUsuarios.findById.mockResolvedValue(usuario({ role: "CUSTOMER" }));
   const { req, res, next } = contextoExpress(
     `Bearer ${tokenDe({ id: "usr_001", email: "ana@homara.com", role: "ADMIN" })}`,
   );
