@@ -1,133 +1,77 @@
 // ============================================================================
-// Dobles de prueba hechos a mano + fábricas de datos.
+// Dobles de prueba (mocks de Vitest) + fábricas de datos.
 //
-// Sustituye al viejo `test-helpers.ts` basado en Vitest. En vez de `vi.fn()`
-// hay un `spy()` de ~20 líneas: registra llamadas y deja configurar el valor
-// de retorno. Los repositorios "falsos" son objetos planos de spies.
+// Los repositorios falsos son objetos planos de `vi.fn()`: mocks reales, así
+// que en los casos se programan con `.mockResolvedValue()` / `.mockImplementation()`
+// y se comprueban con `expect(x).toHaveBeenCalledWith(...)`.
 // ============================================================================
 
-import { deepStrictEqual } from "node:assert/strict";
+import { vi } from "vitest";
+import type { Mock } from "vitest";
 
-// --- Spy artesanal --------------------------------------------------------
-
-export interface Spy {
-  (...args: any[]): any;
-  calls: any[][];
-  /** Devuelve `v` de forma síncrona. */
-  returns(v: any): Spy;
-  /** Devuelve `Promise.resolve(v)`. */
-  resolves(v: any): Spy;
-  /** Devuelve una promesa rechazada con `e`. */
-  rejects(e: any): Spy;
-  /** Ejecuta `f` con los argumentos recibidos. */
-  does(f: (...a: any[]) => any): Spy;
-  /** Encola un valor resuelto para la próxima llamada (se consume una vez). */
-  resolvesOnce(v: any): Spy;
-  /** Limpia llamadas y comportamiento. */
-  reset(): Spy;
-}
-
-export function spy(impl?: (...a: any[]) => any): Spy {
-  const cola: Array<(...a: any[]) => any> = [];
-  let base = impl;
-
-  const s = ((...args: any[]) => {
-    s.calls.push(args);
-    const fn = cola.length ? cola.shift()! : base;
-    return fn ? fn(...args) : undefined;
-  }) as Spy;
-
-  s.calls = [];
-  s.returns = (v) => ((base = () => v), s);
-  s.resolves = (v) => ((base = async () => v), s);
-  s.rejects = (e) => ((base = async () => { throw e; }), s);
-  s.does = (f) => ((base = f), s);
-  s.resolvesOnce = (v) => (cola.push(async () => v), s);
-  s.reset = () => ((s.calls = []), (cola.length = 0), (base = impl), s);
-  return s;
-}
-
-/** Primer argumento de la llamada `n` (por defecto la primera). */
-export const arg = (s: Spy, llamada = 0, pos = 0) => s.calls[llamada]?.[pos];
-
-/** ¿Se llamó al spy alguna vez con exactamente estos argumentos? */
-export function calledWith(s: Spy, ...esperados: any[]): boolean {
-  return s.calls.some((c) => {
-    try {
-      deepStrictEqual(c, esperados);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
-
-/** ¿Nunca se llamó? */
-export const neverCalled = (s: Spy) => s.calls.length === 0;
-
-// --- Repositorios falsos (objetos de spies) ------------------------------
+// --- Repositorios falsos (objetos de mocks) ------------------------------
 
 export const fakeUsuarios = () => ({
-  findById: spy(),
-  findByEmail: spy(),
-  create: spy(),
-  update: spy(),
+  findById: vi.fn(),
+  findByEmail: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
 });
 
 export const fakeProyectos = () => ({
-  findAllByUserId: spy(),
-  findById: spy(),
-  create: spy(async (p: any) => proyecto(p)),
-  update: spy(async (id: string, d: any) => proyecto({ id, ...d })),
-  delete: spy(),
+  findAllByUserId: vi.fn(),
+  findById: vi.fn(),
+  create: vi.fn(async (p: any) => proyecto(p)),
+  update: vi.fn(async (id: string, d: any) => proyecto({ id, ...d })),
+  delete: vi.fn(),
 });
 
 export const fakeProductos = () => ({
-  findAll: spy(),
-  findById: spy(),
-  create: spy(),
-  updateStock: spy(),
-  findStorefrontRecommended: spy(),
-  findStorefrontOffers: spy(),
-  findStorefrontBestSellers: spy(),
-  updateProductRating: spy(),
-  update: spy(),
-  delete: spy(),
+  findAll: vi.fn(),
+  findById: vi.fn(),
+  create: vi.fn(),
+  updateStock: vi.fn(),
+  findStorefrontRecommended: vi.fn(),
+  findStorefrontOffers: vi.fn(),
+  findStorefrontBestSellers: vi.fn(),
+  updateProductRating: vi.fn(),
+  update: vi.fn(),
+  delete: vi.fn(),
 });
 
 export const fakeCarritos = () => ({
-  findByUserId: spy(),
-  addItem: spy(),
-  updateItemQuantity: spy(),
-  removeItem: spy(),
-  clear: spy(),
-  findItemOwner: spy(),
-  getReservedQuantities: spy(),
+  findByUserId: vi.fn(),
+  addItem: vi.fn(),
+  updateItemQuantity: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+  findItemOwner: vi.fn(),
+  getReservedQuantities: vi.fn(),
 });
 
 export const fakeResenas = () => ({
-  create: spy(),
-  findByUserAndProduct: spy(),
-  findByProductId: spy(),
-  getAverageRatingAndCount: spy(),
+  create: vi.fn(),
+  findByUserAndProduct: vi.fn(),
+  findByProductId: vi.fn(),
+  getAverageRatingAndCount: vi.fn(),
 });
 
 export const fakePedidos = () => ({
-  findAll: spy(),
-  findByIdOrNumber: spy(),
-  create: spy(),
-  updateStatus: spy(),
-  countByYear: spy(),
+  findAll: vi.fn(),
+  findByIdOrNumber: vi.fn(),
+  create: vi.fn(),
+  updateStatus: vi.fn(),
+  countByYear: vi.fn(),
 });
 
 export const fakePrismaAdmin = () => ({
-  order: { findMany: spy(), count: spy() },
-  orderItem: { findMany: spy() },
-  product: { count: spy(), findMany: spy() },
-  user: { count: spy() },
+  order: { findMany: vi.fn(), count: vi.fn() },
+  orderItem: { findMany: vi.fn() },
+  product: { count: vi.fn(), findMany: vi.fn() },
+  user: { count: vi.fn() },
 });
 
-// --- Entidades y fábricas de datos (idénticas al viejo helper) ----------
+// --- Entidades y fábricas de datos ---------------------------------------
 
 export function usuario(over: Record<string, any> = {}) {
   return {
@@ -303,9 +247,9 @@ export function programarOrdenes(
   o: { actual?: any[]; anterior?: any[]; anio?: any[] } = {},
 ) {
   p.order.findMany
-    .resolvesOnce(o.actual ?? [])
-    .resolvesOnce(o.anterior ?? [])
-    .resolvesOnce(o.anio ?? []);
+    .mockResolvedValueOnce(o.actual ?? [])
+    .mockResolvedValueOnce(o.anterior ?? [])
+    .mockResolvedValueOnce(o.anio ?? []);
 }
 
 // --- Utilidades HTTP y Express -----------------------------------------
@@ -324,22 +268,22 @@ export function contextoExpress(authHeader?: string) {
       return this;
     },
   };
-  const next = spy();
+  const next = vi.fn();
   return { req, res, next };
 }
 
 /** El error pasado a `next(err)` en el primer llamado. */
-export function errorDeNext(next: Spy) {
-  return next.calls[0]?.[0];
+export function errorDeNext(next: Mock) {
+  return next.mock.calls[0]?.[0];
 }
 
-/** Ejecuta `fn` con `Date.now()` congelado en `iso` (reemplaza a los fake timers). */
+/** Ejecuta `fn` con el reloj del sistema fijado en `iso` (timers falsos de Vitest). */
 export async function conRelojFijo<T>(iso: string, fn: () => T | Promise<T>): Promise<T> {
-  const real = Date.now;
-  Date.now = () => new Date(iso).getTime();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(iso));
   try {
     return await fn();
   } finally {
-    Date.now = real;
+    vi.useRealTimers();
   }
 }

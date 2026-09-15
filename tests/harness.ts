@@ -1,12 +1,21 @@
 // ============================================================================
-// Arnés de pruebas manuales — sin framework, sin librería de mocks.
+// Arnés sobre Vitest.
 //
-// Cada archivo `tests/F-*.ts` registra sus casos con `test(id, desc, fn)` y
-// `tests/run-all.ts` los ejecuta con `run()`. Las aserciones son las de
-// `node:assert/strict` envueltas en nombres cortos. No hay watch ni cobertura:
-// se corre entero con `npm test` (o `npm test -- F-CHK` para filtrar por id).
+// Los archivos `tests/F-*.ts` y `tests/unit-*.ts` siguen registrando casos con
+// `test(id, desc, fn)`; acá eso se delega a `it()` de Vitest, que además provee
+// el runner (paralelo por archivo), watch, filtros y cobertura.
+//
+//   npx vitest                      # watch
+//   npm test                        # run completo
+//   npm test -- tests/F-CHK-01.ts   # un archivo
+//   npm test -- -t CP-F-AUTH-01-02  # un caso por id
+//
+// Las aserciones siguen siendo las de `node:assert/strict` envueltas en nombres
+// cortos: funcionan igual dentro de Vitest. Para casos nuevos también se
+// re-exporta `expect` y `vi`.
 // ============================================================================
 
+import { it } from "vitest";
 import {
   deepStrictEqual,
   strictEqual,
@@ -15,10 +24,9 @@ import {
   match as nodeMatch,
 } from "node:assert/strict";
 
-export type TestFn = () => void | Promise<void>;
-type Caso = { id: string; desc: string; fn: TestFn };
+export { expect, vi, describe, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 
-const casos: Caso[] = [];
+export type TestFn = () => void | Promise<void>;
 
 let softErrors: string[] = [];
 
@@ -35,41 +43,17 @@ export function soft(fn: () => void): void {
   }
 }
 
-/** Registra un caso de prueba. El `id` es el identificador del plan (CP-F-...). */
+/** Registra un caso en Vitest. El `id` es el identificador del plan (CP-F-...). */
 export function test(id: string, desc: string, fn: TestFn): void {
-  casos.push({ id, desc, fn });
-}
-
-/** Ejecuta los casos registrados. Filtro opcional por `process.argv[2]`. */
-export async function run(): Promise<void> {
-  const filtro = process.argv[2];
-  const lista = filtro ? casos.filter((c) => c.id.includes(filtro)) : casos;
-
-  let ok = 0;
-  const fallos: string[] = [];
-
-  for (const c of lista) {
-    try {
+  it(`${id}  ${desc}`, async () => {
+    softErrors = [];
+    await fn();
+    if (softErrors.length) {
+      const fallos = softErrors;
       softErrors = [];
-      await c.fn();
-      if (softErrors.length) {
-        throw new Error(softErrors.join("\n       ---\n"));
-      }
-      console.log(`[PASS] ${c.id}  ${c.desc}`);
-      ok++;
-    } catch (e) {
-      const msg = e instanceof Error ? e.stack ?? e.message : String(e);
-      console.log(`[FAIL] ${c.id}  ${c.desc}`);
-      console.log("       " + msg.replace(/\n/g, "\n       "));
-      fallos.push(c.id);
+      throw new Error(fallos.join("\n       ---\n"));
     }
-  }
-
-  console.log(`\n${ok} passed, ${fallos.length} failed  (${lista.length} total)`);
-  if (fallos.length) {
-    console.log("Fallaron: " + fallos.join(", "));
-    process.exit(1);
-  }
+  });
 }
 
 // --- Aserciones -------------------------------------------------------------

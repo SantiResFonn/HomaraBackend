@@ -1,8 +1,8 @@
 // F-CAT-02 · Ver el detalle de un producto
 // Unidad: GetProductDetailUseCase.execute()  (GET /api/v1/products/:id)
 
-import { test, is, ok, grab } from "./harness.js";
-import { fakeProductos, fakeCarritos, producto, carrito, calledWith, neverCalled } from "./helpers.js";
+import { test, is, ok, grab, expect } from "./harness.js";
+import { fakeProductos, fakeCarritos, producto, carrito } from "./helpers.js";
 import { GetProductDetailUseCase } from "../src/application/use-cases/catalog.use-cases.js";
 import { AppError } from "../src/shared/errors/AppError.js";
 
@@ -14,27 +14,34 @@ function montar() {
 }
 
 test("CP-F-CAT-02-01", "Retorna 404 si el producto no existe", async () => {
+  // Arrange
   const { productos, carritos, caso } = montar();
-  productos.findById.resolves(null);
+  productos.findById.mockResolvedValue(null);
 
+  // Act
   const error = await grab(caso.execute("prd_inexistente"));
+
+  // Assert
   ok(error instanceof AppError);
   is(error.statusCode, 404);
   is(error.message, "Producto no encontrado");
-  ok(neverCalled(carritos.findByUserId));
-  ok(neverCalled(carritos.getReservedQuantities));
+  expect(carritos.findByUserId).not.toHaveBeenCalled();
+  expect(carritos.getReservedQuantities).not.toHaveBeenCalled();
 });
 
 test("CP-F-CAT-02-02", "Excluye la reserva propia del usuario autenticado al calcular stock disponible", async () => {
+  // Arrange
   const { productos, carritos, caso } = montar();
-  productos.findById.resolves(producto({ id: "prd_001", stockQuantity: 10 }));
-  carritos.findByUserId.resolves(carrito({ id: "cart_001" }));
-  carritos.getReservedQuantities.resolves({ prd_001: 4 });
+  productos.findById.mockResolvedValue(producto({ id: "prd_001", stockQuantity: 10 }));
+  carritos.findByUserId.mockResolvedValue(carrito({ id: "cart_001" }));
+  carritos.getReservedQuantities.mockResolvedValue({ prd_001: 4 });
 
+  // Act
   const ficha = await caso.execute("prd_001", "usr_001");
 
-  ok(calledWith(carritos.findByUserId, "usr_001"));
-  ok(calledWith(carritos.getReservedQuantities, "cart_001", ["prd_001"]));
+  // Assert
+  expect(carritos.findByUserId).toHaveBeenCalledWith("usr_001");
+  expect(carritos.getReservedQuantities).toHaveBeenCalledWith("cart_001", ["prd_001"]);
   is(ficha.stockQuantity, 6);
   is(ficha.inStock, true);
   is(ficha.price, 38900);
@@ -44,36 +51,45 @@ test("CP-F-CAT-02-02", "Excluye la reserva propia del usuario autenticado al cal
 });
 
 test("CP-F-CAT-02-03", "Descuenta todas las reservas activas para usuario anónimo", async () => {
+  // Arrange
   const { productos, carritos, caso } = montar();
-  productos.findById.resolves(producto({ id: "prd_001", stockQuantity: 10 }));
-  carritos.getReservedQuantities.resolves({ prd_001: 4 });
+  productos.findById.mockResolvedValue(producto({ id: "prd_001", stockQuantity: 10 }));
+  carritos.getReservedQuantities.mockResolvedValue({ prd_001: 4 });
 
+  // Act
   const ficha = await caso.execute("prd_001");
 
-  ok(neverCalled(carritos.findByUserId));
-  ok(calledWith(carritos.getReservedQuantities, "", ["prd_001"]));
+  // Assert
+  expect(carritos.findByUserId).not.toHaveBeenCalled();
+  expect(carritos.getReservedQuantities).toHaveBeenCalledWith("", ["prd_001"]);
   is(ficha.stockQuantity, 6);
   is(ficha.inStock, true);
 });
 
 test("CP-F-CAT-02-03b", "Marca producto como agotado si las reservas consumen todo el stock", async () => {
+  // Arrange
   const { productos, carritos, caso } = montar();
-  productos.findById.resolves(producto({ id: "prd_001", stockQuantity: 3, inStock: true }));
-  carritos.getReservedQuantities.resolves({ prd_001: 9 });
+  productos.findById.mockResolvedValue(producto({ id: "prd_001", stockQuantity: 3, inStock: true }));
+  carritos.getReservedQuantities.mockResolvedValue({ prd_001: 9 });
 
+  // Act
   const ficha = await caso.execute("prd_001");
 
+  // Assert
   is(ficha.stockQuantity, 0);
   is(ficha.inStock, false);
 });
 
 test("CP-F-CAT-02-03c", "Mantiene stock físico intacto cuando no hay reservas activas", async () => {
+  // Arrange
   const { productos, carritos, caso } = montar();
-  productos.findById.resolves(producto({ id: "prd_001", stockQuantity: 7 }));
-  carritos.getReservedQuantities.resolves({});
+  productos.findById.mockResolvedValue(producto({ id: "prd_001", stockQuantity: 7 }));
+  carritos.getReservedQuantities.mockResolvedValue({});
 
+  // Act
   const ficha = await caso.execute("prd_001");
 
+  // Assert
   is(ficha.stockQuantity, 7);
   is(ficha.inStock, true);
 });

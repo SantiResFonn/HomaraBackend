@@ -1,8 +1,8 @@
 // F-CHK-02 · Ver y modificar el carrito
 // Unidad: GetCartUseCase.execute()  (GET /api/v1/cart)
 
-import { test, is, eq, ok, subset } from "./harness.js";
-import { spy, arg, conRelojFijo, neverCalled } from "./helpers.js";
+import { test, is, eq, subset, expect, vi } from "./harness.js";
+import { conRelojFijo } from "./helpers.js";
 import { GetCartUseCase } from "../src/application/use-cases/cart.use-cases.js";
 import { PrismaCartRepository } from "../src/infrastructure/database/repositories/prisma-cart.repository.js";
 
@@ -55,14 +55,14 @@ const filaCarrito = (items: any[] = [], o: Record<string, any> = {}) => ({
 
 function montar() {
   const db = {
-    cart: { findUnique: spy(), create: spy() },
+    cart: { findUnique: vi.fn(), create: vi.fn() },
     cartItem: {
-      findMany: spy().resolves([]),
-      findUnique: spy(),
-      update: spy(),
-      create: spy(),
-      delete: spy(),
-      deleteMany: spy(),
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
   };
   const caso = new GetCartUseCase(new PrismaCartRepository(db as any));
@@ -70,16 +70,19 @@ function montar() {
 }
 
 test("CP-F-CHK-02-01", "Crea un carrito vacío cuando el usuario no tenía uno previo", async () => {
+  // Arrange
   const { db, caso } = montar();
-  db.cart.findUnique.resolves(null);
-  db.cart.create.resolves(filaCarrito([], { id: "cart_nuevo" }));
+  db.cart.findUnique.mockResolvedValue(null);
+  db.cart.create.mockResolvedValue(filaCarrito([], { id: "cart_nuevo" }));
 
+  // Act
   const salida = await caso.execute(ID_USUARIO);
 
-  is(db.cart.create.calls.length, 1);
-  eq(arg(db.cart.create).data, { userId: ID_USUARIO });
+  // Assert
+  is(db.cart.create.mock.calls.length, 1);
+  eq(db.cart.create.mock.calls[0][0].data, { userId: ID_USUARIO });
   is(salida.id, "cart_nuevo");
-  ok(neverCalled(db.cartItem.findMany));
+  expect(db.cartItem.findMany).not.toHaveBeenCalled();
   eq(salida.items, []);
   is(salida.itemCount, 0);
   is(salida.subtotal, 0);
@@ -88,27 +91,33 @@ test("CP-F-CHK-02-01", "Crea un carrito vacío cuando el usuario no tenía uno p
 });
 
 test("CP-F-CHK-02-02", "Retorna estructura de carrito existente sin productos", async () => {
+  // Arrange
   const { db, caso } = montar();
-  db.cart.findUnique.resolves(filaCarrito([]));
+  db.cart.findUnique.mockResolvedValue(filaCarrito([]));
 
+  // Act
   const salida = await caso.execute(ID_USUARIO);
 
-  ok(neverCalled(db.cart.create));
-  eq(arg(db.cart.findUnique).where, { userId: ID_USUARIO });
-  ok(neverCalled(db.cartItem.findMany));
+  // Assert
+  expect(db.cart.create).not.toHaveBeenCalled();
+  eq(db.cart.findUnique.mock.calls[0][0].where, { userId: ID_USUARIO });
+  expect(db.cartItem.findMany).not.toHaveBeenCalled();
   subset(salida as any, { subtotal: 0, shipping: 25000, total: 25000, itemCount: 0 });
 });
 
 test("CP-F-CHK-02-03", "Calcula backorder y aplica envío gratuito cuando subtotal supera 500000", async () => {
+  // Arrange
   const { db, caso } = montar();
-  db.cart.findUnique.resolves(
+  db.cart.findUnique.mockResolvedValue(
     filaCarrito([filaLinea({ quantity: 3, product: filaProducto({ price: 200000, stockQuantity: 10 }) })]),
   );
-  db.cartItem.findMany.resolves([{ productId: ID_A, quantity: 8 }]);
+  db.cartItem.findMany.mockResolvedValue([{ productId: ID_A, quantity: 8 }]);
 
+  // Act
   const salida = await conRelojFijo("2026-08-25T12:00:00.000Z", () => caso.execute(ID_USUARIO));
 
-  const filtro = arg(db.cartItem.findMany).where;
+  // Assert
+  const filtro = db.cartItem.findMany.mock.calls[0][0].where;
   eq(filtro.productId, { in: [ID_A] });
   eq(filtro.cartId, { not: "cart_001" });
   eq(filtro.updatedAt.gte, new Date("2026-08-25T11:45:00.000Z"));
@@ -122,36 +131,42 @@ test("CP-F-CHK-02-03", "Calcula backorder y aplica envío gratuito cuando subtot
 });
 
 test("CP-F-CHK-02-04", "Muestra disponibilidad total sin backorder con stock suficiente", async () => {
+  // Arrange
   const { db, caso } = montar();
-  db.cart.findUnique.resolves(
+  db.cart.findUnique.mockResolvedValue(
     filaCarrito([filaLinea({ quantity: 1, product: filaProducto({ price: 500001, stockQuantity: 10 }) })]),
   );
-  db.cartItem.findMany.resolves([]);
+  db.cartItem.findMany.mockResolvedValue([]);
 
+  // Act
   const salida = await caso.execute(ID_USUARIO);
 
+  // Assert
   is(salida.items[0].availableStock, 10);
   is(salida.items[0].isBackorder, false);
   is(salida.items[0].backorderQuantity, 0);
   is(salida.subtotal, 500001);
   is(salida.shipping, 0);
   is(salida.total, 500001);
-  is(db.cartItem.findMany.calls.length, 1);
+  is(db.cartItem.findMany.mock.calls.length, 1);
 });
 
 test("CP-F-CHK-02-05", "Itera múltiples líneas combinando disponibles y pedidos pendientes", async () => {
+  // Arrange
   const { db, caso } = montar();
-  db.cart.findUnique.resolves(
+  db.cart.findUnique.mockResolvedValue(
     filaCarrito([
       filaLinea({ id: "ci_a", quantity: 5, product: filaProducto({ price: 100000, stockQuantity: 4 }) }),
       filaLinea({ id: "ci_b", quantity: 2, product: filaProducto({ id: ID_B, price: 150000, stockQuantity: 50 }) }),
     ]),
   );
-  db.cartItem.findMany.resolves([{ productId: ID_A, quantity: 2 }]);
+  db.cartItem.findMany.mockResolvedValue([{ productId: ID_A, quantity: 2 }]);
 
+  // Act
   const salida = await caso.execute(ID_USUARIO);
 
-  eq(arg(db.cartItem.findMany).where.productId, { in: [ID_A, ID_B] });
+  // Assert
+  eq(db.cartItem.findMany.mock.calls[0][0].where.productId, { in: [ID_A, ID_B] });
   is(salida.items[0].availableStock, 2);
   is(salida.items[0].isBackorder, true);
   is(salida.items[0].backorderQuantity, 3);
@@ -165,22 +180,24 @@ test("CP-F-CHK-02-05", "Itera múltiples líneas combinando disponibles y pedido
 });
 
 test("CP-F-CHK-02-06", "Cobra tarifa de envío con subtotal inferior al umbral y evalúa umbral de 500000", async () => {
+  // Arrange
   const { db, caso } = montar();
-  db.cart.findUnique.resolves(filaCarrito([]));
+  db.cart.findUnique.mockResolvedValue(filaCarrito([]));
 
+  // Act — 2º escenario: carrito con subtotal de 500.000 exactos.
   const vacio = await caso.execute(ID_USUARIO);
+
+  db.cart.findUnique.mockResolvedValue(
+    filaCarrito([filaLinea({ quantity: 2, product: filaProducto({ price: 250000, stockQuantity: 10 }) })]),
+  );
+  db.cartItem.findMany.mockResolvedValue([]);
+  const limite = await caso.execute(ID_USUARIO);
+
+  // Assert
   is(vacio.subtotal, 0);
   is(vacio.shipping, 25000);
   is(vacio.total, 25000);
-
-  db.cart.findUnique.resolves(
-    filaCarrito([filaLinea({ quantity: 2, product: filaProducto({ price: 250000, stockQuantity: 10 }) })]),
-  );
-  db.cartItem.findMany.resolves([]);
-
-  const limite = await caso.execute(ID_USUARIO);
   is(limite.subtotal, 500000);
-
   // DEFECTO: con 500.000 exactos el envío no es gratuito según HU19 (RF16 vs HU19)
   is(limite.shipping, 0);
   is(limite.total, 500000);

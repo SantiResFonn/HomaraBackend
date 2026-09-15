@@ -1,5 +1,4 @@
-import { test, is, eq, ok } from "./harness.js";
-import { spy } from "./helpers.js";
+import { test, is, ok, vi } from "./harness.js";
 import { PrismaCategoryRepository } from "../src/infrastructure/database/repositories/prisma-category.repository.js";
 import { PrismaUserRepository } from "../src/infrastructure/database/repositories/prisma-user.repository.js";
 import { PrismaReviewRepository } from "../src/infrastructure/database/repositories/prisma-review.repository.js";
@@ -13,9 +12,10 @@ import { PrismaCartRepository } from "../src/infrastructure/database/repositorie
 // ============================================================================
 
 test("UNIT-REPO-CAT-01", "PrismaCategoryRepository.findAll mapea categorias", async () => {
+  // Arrange
   const db = {
     category: {
-      findMany: spy(async () => [
+      findMany: vi.fn(async () => [
         {
           id: "cat-1",
           name: "Pisos",
@@ -28,10 +28,12 @@ test("UNIT-REPO-CAT-01", "PrismaCategoryRepository.findAll mapea categorias", as
       ])
     }
   };
-
   const repo = new PrismaCategoryRepository(db as any);
+
+  // Act
   const result = await repo.findAll();
 
+  // Assert
   is(result.length, 1);
   is(result[0].id, "cat-1");
   is(result[0].name, "Pisos");
@@ -39,6 +41,7 @@ test("UNIT-REPO-CAT-01", "PrismaCategoryRepository.findAll mapea categorias", as
 });
 
 test("UNIT-REPO-CAT-02", "PrismaCategoryRepository findBySlug y create retornan entidad o null", async () => {
+  // Arrange
   const catRow = {
     id: "cat-1",
     name: "Pisos",
@@ -51,11 +54,11 @@ test("UNIT-REPO-CAT-02", "PrismaCategoryRepository findBySlug y create retornan 
 
   const db = {
     category: {
-      findUnique: spy(async (args: any) => {
+      findUnique: vi.fn(async (args: any) => {
         if (args.where.slug === "pisos") return catRow;
         return null;
       }),
-      create: spy(async (args: any) => ({
+      create: vi.fn(async (args: any) => ({
         ...catRow,
         ...args.data,
         id: "cat-new"
@@ -65,12 +68,10 @@ test("UNIT-REPO-CAT-02", "PrismaCategoryRepository findBySlug y create retornan 
 
   const repo = new PrismaCategoryRepository(db as any);
 
+  // Act
   const bySlug = await repo.findBySlug("pisos");
-  ok(bySlug !== null);
-  is(bySlug?.id, "cat-1");
 
   const none = await repo.findBySlug("none");
-  is(none, null);
 
   const created = await repo.create({
     name: "Pinturas",
@@ -78,6 +79,11 @@ test("UNIT-REPO-CAT-02", "PrismaCategoryRepository findBySlug y create retornan 
     description: "Pinturas para interior",
     icon: "paint.png"
   });
+
+  // Assert
+  ok(bySlug !== null);
+  is(bySlug?.id, "cat-1");
+  is(none, null);
   is(created.id, "cat-new");
   is(created.slug, "pinturas");
 });
@@ -87,6 +93,7 @@ test("UNIT-REPO-CAT-02", "PrismaCategoryRepository findBySlug y create retornan 
 // ============================================================================
 
 test("UNIT-REPO-USR-01", "PrismaUserRepository CRUD y mapeo a User entity", async () => {
+  // Arrange
   const userRow = {
     id: "usr-1",
     email: "test@homara.co",
@@ -105,16 +112,16 @@ test("UNIT-REPO-USR-01", "PrismaUserRepository CRUD y mapeo a User entity", asyn
 
   const db = {
     user: {
-      findUnique: spy(async (args: any) => {
+      findUnique: vi.fn(async (args: any) => {
         if (args.where.id === "usr-1" || args.where.email === "test@homara.co") return userRow;
         return null;
       }),
-      create: spy(async (args: any) => ({
+      create: vi.fn(async (args: any) => ({
         ...userRow,
         ...args.data,
         id: "usr-new"
       })),
-      update: spy(async (args: any) => ({
+      update: vi.fn(async (args: any) => ({
         ...userRow,
         ...args.data,
         id: args.where.id
@@ -124,16 +131,12 @@ test("UNIT-REPO-USR-01", "PrismaUserRepository CRUD y mapeo a User entity", asyn
 
   const repo = new PrismaUserRepository(db as any);
 
+  // Act
   const byId = await repo.findById("usr-1");
-  ok(byId !== null);
-  is(byId?.firstName, "Laura");
 
   const byEmail = await repo.findByEmail("test@homara.co");
-  ok(byEmail !== null);
-  is(byEmail?.id, "usr-1");
 
   const byIdNone = await repo.findById("non-existent");
-  is(byIdNone, null);
 
   const created = await repo.create({
     email: "created@homara.co",
@@ -141,10 +144,17 @@ test("UNIT-REPO-USR-01", "PrismaUserRepository CRUD y mapeo a User entity", asyn
     firstName: "Nuevo",
     lastName: "Usuario"
   });
-  is(created.id, "usr-new");
-  is(created.firstName, "Nuevo");
 
   const updated = await repo.update("usr-1", { firstName: "Laura Modificada" });
+
+  // Assert
+  ok(byId !== null);
+  is(byId?.firstName, "Laura");
+  ok(byEmail !== null);
+  is(byEmail?.id, "usr-1");
+  is(byIdNone, null);
+  is(created.id, "usr-new");
+  is(created.firstName, "Nuevo");
   is(updated.firstName, "Laura Modificada");
 });
 
@@ -153,6 +163,7 @@ test("UNIT-REPO-USR-01", "PrismaUserRepository CRUD y mapeo a User entity", asyn
 // ============================================================================
 
 test("UNIT-REPO-REV-01", "PrismaReviewRepository create, find y calculo de promedio", async () => {
+  // Arrange
   const reviewRow = {
     id: "rev-1",
     rating: 5,
@@ -166,10 +177,10 @@ test("UNIT-REPO-REV-01", "PrismaReviewRepository create, find y calculo de prome
 
   const db = {
     review: {
-      create: spy(async (args: any) => ({ ...reviewRow, ...args.data, id: "rev-new" })),
-      findUnique: spy(async () => reviewRow),
-      findMany: spy(async () => [reviewRow]),
-      aggregate: spy(async () => ({
+      create: vi.fn(async (args: any) => ({ ...reviewRow, ...args.data, id: "rev-new" })),
+      findUnique: vi.fn(async () => reviewRow),
+      findMany: vi.fn(async () => [reviewRow]),
+      aggregate: vi.fn(async () => ({
         _avg: { rating: 4.8 },
         _count: { rating: 12 }
       }))
@@ -178,32 +189,35 @@ test("UNIT-REPO-REV-01", "PrismaReviewRepository create, find y calculo de prome
 
   const repo = new PrismaReviewRepository(db as any);
 
+  // Act
   const created = await repo.create({
     rating: 5,
     comment: "Genial",
     userId: "usr-1",
     productId: "prd-1"
   });
-  is(created.id, "rev-new");
-  is(created.userFirstName, "Laura");
 
   const byUserAndProd = await repo.findByUserAndProduct("usr-1", "prd-1");
-  ok(byUserAndProd !== null);
-  is(byUserAndProd?.rating, 5);
 
   const list = await repo.findByProductId("prd-1");
-  is(list.length, 1);
 
   const stats = await repo.getAverageRatingAndCount("prd-1");
-  is(stats.avg, 4.8);
-  is(stats.count, 12);
 
   // Caso sin reseñas (promedio null -> 0)
-  db.review.aggregate = spy(async () => ({
+  db.review.aggregate = vi.fn(async () => ({
     _avg: { rating: null },
     _count: { rating: 0 }
   }));
   const emptyStats = await repo.getAverageRatingAndCount("prd-no-revs");
+
+  // Assert
+  is(created.id, "rev-new");
+  is(created.userFirstName, "Laura");
+  ok(byUserAndProd !== null);
+  is(byUserAndProd?.rating, 5);
+  is(list.length, 1);
+  is(stats.avg, 4.8);
+  is(stats.count, 12);
   is(emptyStats.avg, 0);
   is(emptyStats.count, 0);
 });
@@ -213,6 +227,7 @@ test("UNIT-REPO-REV-01", "PrismaReviewRepository create, find y calculo de prome
 // ============================================================================
 
 test("UNIT-REPO-PROY-01", "PrismaProjectRepository CRUD con mapeo de materiales", async () => {
+  // Arrange
   const projectRow = {
     id: "proy-1",
     name: "Remodelacion Baño",
@@ -255,37 +270,32 @@ test("UNIT-REPO-PROY-01", "PrismaProjectRepository CRUD con mapeo de materiales"
 
   const db = {
     project: {
-      findMany: spy(async () => [projectRow]),
-      findUnique: spy(async (args: any) => args.where.id === "proy-1" ? projectRow : null),
-      create: spy(async (args: any) => ({
+      findMany: vi.fn(async () => [projectRow]),
+      findUnique: vi.fn(async (args: any) => args.where.id === "proy-1" ? projectRow : null),
+      create: vi.fn(async (args: any) => ({
         ...projectRow,
         ...args.data,
         id: "proy-created",
         materials: []
       })),
-      update: spy(async (args: any) => ({
+      update: vi.fn(async (args: any) => ({
         ...projectRow,
         ...args.data,
         id: args.where.id,
         materials: []
       })),
-      delete: spy(async () => projectRow)
+      delete: vi.fn(async () => projectRow)
     }
   };
 
   const repo = new PrismaProjectRepository(db as any);
 
+  // Act
   const list = await repo.findAllByUserId("usr-1");
-  is(list.length, 1);
-  is(list[0].id, "proy-1");
-  is(list[0].materials?.length, 1);
 
   const byId = await repo.findById("proy-1");
-  ok(byId !== null);
-  is(byId?.name, "Remodelacion Baño");
 
   const byIdNone = await repo.findById("non-existent");
-  is(byIdNone, null);
 
   const created = await repo.create({
     name: "Nuevo Proy",
@@ -297,16 +307,25 @@ test("UNIT-REPO-PROY-01", "PrismaProjectRepository CRUD con mapeo de materiales"
     status: "EN_PROGRESO",
     estimatedCost: 100000
   });
-  is(created.id, "proy-created");
 
   const updated = await repo.update("proy-1", { name: "Baño Renovado" });
-  is(updated.name, "Baño Renovado");
 
   await repo.delete("proy-1");
-  is(db.project.delete.calls.length, 1);
+
+  // Assert
+  is(list.length, 1);
+  is(list[0].id, "proy-1");
+  is(list[0].materials?.length, 1);
+  ok(byId !== null);
+  is(byId?.name, "Remodelacion Baño");
+  is(byIdNone, null);
+  is(created.id, "proy-created");
+  is(updated.name, "Baño Renovado");
+  is(db.project.delete.mock.calls.length, 1);
 });
 
 test("UNIT-REPO-PROY-02", "PrismaProjectRepository create y update con lista de materiales", async () => {
+  // Arrange
   const projectRowWithMats = {
     id: "proy-mats",
     name: "Proy Materiales",
@@ -349,23 +368,24 @@ test("UNIT-REPO-PROY-02", "PrismaProjectRepository create y update con lista de 
 
   const db = {
     project: {
-      create: spy(async (args: any) => ({
+      create: vi.fn(async (args: any) => ({
         ...projectRowWithMats,
         id: "proy-created-mats",
         materials: args.data.materials?.create || []
       })),
-      update: spy(async (args: any) => ({
+      update: vi.fn(async (args: any) => ({
         ...projectRowWithMats,
         materials: args.data.materials?.create || []
       }))
     },
     projectMaterial: {
-      deleteMany: spy(async () => ({}))
+      deleteMany: vi.fn(async () => ({}))
     }
   };
 
   const repo = new PrismaProjectRepository(db as any);
 
+  // Act
   // Crear con materiales
   const created = await repo.create({
     name: "Proy Materiales",
@@ -380,9 +400,6 @@ test("UNIT-REPO-PROY-02", "PrismaProjectRepository create y update con lista de 
       { name: "Pegante Gris", quantity: "3 bolsas", note: "adhesivo", icon: "📦", price: 35000, productId: "prd-1" }
     ]
   });
-  is(created.id, "proy-created-mats");
-  is(created.materials?.length, 1);
-  is(created.materials?.[0].name, "Pegante Gris");
 
   // Actualizar con nuevos materiales
   const updated = await repo.update("proy-mats", {
@@ -390,7 +407,12 @@ test("UNIT-REPO-PROY-02", "PrismaProjectRepository create y update con lista de 
       { name: "Boquilla Blanca", quantity: "1 bolsa", note: "juntas", icon: "✨", price: 15000, productId: "prd-2" }
     ]
   });
-  is(db.projectMaterial.deleteMany.calls.length, 1);
+
+  // Assert
+  is(created.id, "proy-created-mats");
+  is(created.materials?.length, 1);
+  is(created.materials?.[0].name, "Pegante Gris");
+  is(db.projectMaterial.deleteMany.mock.calls.length, 1);
   is(updated.materials?.length, 1);
   is(updated.materials?.[0].name, "Boquilla Blanca");
 });
@@ -400,6 +422,7 @@ test("UNIT-REPO-PROY-02", "PrismaProjectRepository create y update con lista de 
 // ============================================================================
 
 test("UNIT-REPO-ORD-01", "PrismaOrderRepository findAll, findByIdOrNumber, updateStatus y countByYear", async () => {
+  // Arrange
   const orderRow = {
     id: "ord-1",
     orderNumber: "ORD-2026-001",
@@ -450,53 +473,57 @@ test("UNIT-REPO-ORD-01", "PrismaOrderRepository findAll, findByIdOrNumber, updat
 
   const db = {
     order: {
-      findMany: spy(async () => [orderRow]),
-      findFirst: spy(async (args: any) => {
+      findMany: vi.fn(async () => [orderRow]),
+      findFirst: vi.fn(async (args: any) => {
         if (args.where.OR.some((c: any) => c.id === "ord-1" || c.orderNumber === "ORD-2026-001")) {
           return orderRow;
         }
         return null;
       }),
-      update: spy(async (args: any) => ({
+      update: vi.fn(async (args: any) => ({
         ...orderRow,
         status: args.data.status
       })),
-      count: spy(async () => 8)
+      count: vi.fn(async () => 8)
     }
   };
 
   const repo = new PrismaOrderRepository(db as any);
 
+  // Act
   const orders = await repo.findAll({ userId: "usr-1", admin: false });
+
+  const byId = await repo.findByIdOrNumber("ord-1");
+
+  const byNum = await repo.findByIdOrNumber("ORD-2026-001");
+
+  const none = await repo.findByIdOrNumber("ORD-none");
+
+  const updated = await repo.updateStatus("ord-1", "ENVIADO");
+
+  const count = await repo.countByYear(2026);
+
+  // Assert
   is(orders.length, 1);
   is(orders[0].orderNumber, "ORD-2026-001");
   is(orders[0].total, 125000);
-
-  const byId = await repo.findByIdOrNumber("ord-1");
   ok(byId !== null);
   is(byId?.orderNumber, "ORD-2026-001");
   is(byId?.items?.[0].product?.name, "Piso");
-
-  const byNum = await repo.findByIdOrNumber("ORD-2026-001");
   ok(byNum !== null);
-
-  const none = await repo.findByIdOrNumber("ORD-none");
   is(none, null);
-
-  const updated = await repo.updateStatus("ord-1", "ENVIADO");
   is(updated.status, "ENVIADO");
-
-  const count = await repo.countByYear(2026);
   is(count, 8);
 });
 
 test("UNIT-REPO-ORD-02", "PrismaOrderRepository create checkout transaccional y backorder", async () => {
+  // Arrange
   const txMock = {
-    cart: { findUnique: spy(async () => ({ id: "cart-1" })) },
-    $executeRawUnsafe: spy(async () => 1),
+    cart: { findUnique: vi.fn(async () => ({ id: "cart-1" })) },
+    $executeRawUnsafe: vi.fn(async () => 1),
     order: {
-      count: spy(async () => 5),
-      create: spy(async () => ({
+      count: vi.fn(async () => 5),
+      create: vi.fn(async () => ({
         id: "ord-new",
         orderNumber: "ORD-2026-006",
         status: "PENDIENTE",
@@ -517,20 +544,20 @@ test("UNIT-REPO-ORD-02", "PrismaOrderRepository create checkout transaccional y 
       }))
     },
     product: {
-      findMany: spy(async () => [{ id: "prd-1", stockQuantity: 10 }]),
-      update: spy(async () => ({}))
+      findMany: vi.fn(async () => [{ id: "prd-1", stockQuantity: 10 }]),
+      update: vi.fn(async () => ({}))
     },
     cartItem: {
-      findMany: spy(async () => []),
-      deleteMany: spy(async () => ({}))
+      findMany: vi.fn(async () => []),
+      deleteMany: vi.fn(async () => ({}))
     }
   };
-
   const db = {
-    $transaction: spy(async (cb: any) => cb(txMock))
+    $transaction: vi.fn(async (cb: any) => cb(txMock))
   };
-
   const repo = new PrismaOrderRepository(db as any);
+
+  // Act
   const created = await repo.create({
     userId: "usr-1",
     subtotal: 50000,
@@ -546,16 +573,18 @@ test("UNIT-REPO-ORD-02", "PrismaOrderRepository create checkout transaccional y 
     items: [{ productId: "prd-1", quantity: 1, unitPrice: 50000, total: 50000 }]
   });
 
+  // Assert
   is(created.id, "ord-new");
   is(created.orderNumber, "ORD-2026-006");
-  is(txMock.cartItem.deleteMany.calls.length, 1);
-  is(txMock.product.update.calls.length, 1);
+  is(txMock.cartItem.deleteMany.mock.calls.length, 1);
+  is(txMock.product.update.mock.calls.length, 1);
 });
 // ============================================================================
 // PrismaProductRepository Tests
 // ============================================================================
 
 test("UNIT-REPO-PRD-01", "PrismaProductRepository findAll, findById, create y updateStock", async () => {
+  // Arrange
   const prodRow = {
     id: "prd-1",
     name: "Porcelanato Gris 60x60",
@@ -577,15 +606,15 @@ test("UNIT-REPO-PRD-01", "PrismaProductRepository findAll, findById, create y up
 
   const db = {
     product: {
-      findMany: spy(async () => [prodRow]),
-      findUnique: spy(async (args: any) => args.where.id === "prd-1" ? prodRow : null),
-      create: spy(async (args: any) => ({
+      findMany: vi.fn(async () => [prodRow]),
+      findUnique: vi.fn(async (args: any) => args.where.id === "prd-1" ? prodRow : null),
+      create: vi.fn(async (args: any) => ({
         ...prodRow,
         ...args.data,
         id: "prd-new",
         tags: [{ name: "oferta" }]
       })),
-      update: spy(async (args: any) => ({
+      update: vi.fn(async (args: any) => ({
         ...prodRow,
         stockQuantity: args.data.stockQuantity,
         inStock: args.data.inStock
@@ -595,20 +624,14 @@ test("UNIT-REPO-PRD-01", "PrismaProductRepository findAll, findById, create y up
 
   const repo = new PrismaProductRepository(db as any);
 
+  // Act
   // findAll con filtros
   const list = await repo.findAll({ categorySlug: "pisos", query: "porcelanato", tag: "nuevo" });
-  is(list.length, 1);
-  is(list[0].id, "prd-1");
-  is(list[0].tags?.[0], "nuevo");
-  is(list[0].category, "Pisos");
 
   // findById
   const found = await repo.findById("prd-1");
-  ok(found !== null);
-  is(found?.name, "Porcelanato Gris 60x60");
 
   const notFound = await repo.findById("prd-none");
-  is(notFound, null);
 
   // create
   const created = await repo.create({
@@ -625,17 +648,27 @@ test("UNIT-REPO-PRD-01", "PrismaProductRepository findAll, findById, create y up
     categoryId: "cat-1",
     tags: ["oferta"]
   });
-  is(created.id, "prd-new");
 
   // updateStock
   await repo.updateStock("prd-1", 5);
-  is(db.product.update.calls.length, 1);
 
   // updateStock no-op si no existe
   await repo.updateStock("prd-none", 5);
+
+  // Assert
+  is(list.length, 1);
+  is(list[0].id, "prd-1");
+  is(list[0].tags?.[0], "nuevo");
+  is(list[0].category, "Pisos");
+  ok(found !== null);
+  is(found?.name, "Porcelanato Gris 60x60");
+  is(notFound, null);
+  is(created.id, "prd-new");
+  is(db.product.update.mock.calls.length, 1);
 });
 
 test("UNIT-REPO-PRD-02", "PrismaProductRepository storefronts, update y delete", async () => {
+  // Arrange
   const prodRow = {
     id: "prd-1",
     name: "Porcelanato Gris",
@@ -657,49 +690,46 @@ test("UNIT-REPO-PRD-02", "PrismaProductRepository storefronts, update y delete",
 
   const txMock = {
     productTag: {
-      deleteMany: spy(async () => ({})),
-      createMany: spy(async () => ({}))
+      deleteMany: vi.fn(async () => ({})),
+      createMany: vi.fn(async () => ({}))
     },
     product: {
-      update: spy(async () => prodRow),
-      delete: spy(async () => prodRow)
+      update: vi.fn(async () => prodRow),
+      delete: vi.fn(async () => prodRow)
     },
     cartItem: {
-      deleteMany: spy(async () => ({}))
+      deleteMany: vi.fn(async () => ({}))
     },
     projectMaterial: {
-      updateMany: spy(async () => ({}))
+      updateMany: vi.fn(async () => ({}))
     }
   };
 
   const db = {
     product: {
-      findMany: spy(async () => [prodRow]),
-      update: spy(async () => prodRow)
+      findMany: vi.fn(async () => [prodRow]),
+      update: vi.fn(async () => prodRow)
     },
     orderItem: {
-      groupBy: spy(async () => [{ productId: "prd-1", _sum: { quantity: 10 } }])
+      groupBy: vi.fn(async () => [{ productId: "prd-1", _sum: { quantity: 10 } }])
     },
-    $transaction: spy(async (callback: any) => callback(txMock))
+    $transaction: vi.fn(async (callback: any) => callback(txMock))
   };
 
   const repo = new PrismaProductRepository(db as any);
 
+  // Act
   // findStorefrontRecommended
   const recs = await repo.findStorefrontRecommended();
-  is(recs.length, 1);
 
   // findStorefrontOffers
   const offers = await repo.findStorefrontOffers();
-  is(offers.length, 1);
 
   // findStorefrontBestSellers
   const best = await repo.findStorefrontBestSellers();
-  is(best.length, 2);
 
   // updateProductRating
   await repo.updateProductRating("prd-1", 4.9, 16);
-  is(db.product.update.calls.length, 1);
 
   // update con tags
   const updated = await repo.update("prd-1", {
@@ -707,11 +737,17 @@ test("UNIT-REPO-PRD-02", "PrismaProductRepository storefronts, update y delete",
     stockQuantity: 20,
     tags: ["destacado"]
   });
-  is(updated.id, "prd-1");
 
   // delete
   await repo.delete("prd-1");
-  is(txMock.product.delete.calls.length, 1);
+
+  // Assert
+  is(recs.length, 1);
+  is(offers.length, 1);
+  is(best.length, 2);
+  is(db.product.update.mock.calls.length, 1);
+  is(updated.id, "prd-1");
+  is(txMock.product.delete.mock.calls.length, 1);
 });
 
 // ============================================================================
@@ -719,6 +755,7 @@ test("UNIT-REPO-PRD-02", "PrismaProductRepository storefronts, update y delete",
 // ============================================================================
 
 test("UNIT-REPO-CART-01", "PrismaCartRepository findByUserId crea carrito si no existe o mapea existentes", async () => {
+  // Arrange
   const prodRow = {
     id: "prd-1",
     name: "Piso Ceramico",
@@ -758,8 +795,8 @@ test("UNIT-REPO-CART-01", "PrismaCartRepository findByUserId crea carrito si no 
 
   const db = {
     cart: {
-      findUnique: spy(async (args: any) => args.where.userId === "usr-1" ? cartRow : null),
-      create: spy(async (args: any) => ({
+      findUnique: vi.fn(async (args: any) => args.where.userId === "usr-1" ? cartRow : null),
+      create: vi.fn(async (args: any) => ({
         id: "cart-nuevo",
         userId: args.data.userId,
         createdAt: new Date(),
@@ -771,20 +808,24 @@ test("UNIT-REPO-CART-01", "PrismaCartRepository findByUserId crea carrito si no 
 
   const repo = new PrismaCartRepository(db as any);
 
+  // Act
   // Carrito existente
   const existingCart = await repo.findByUserId("usr-1");
-  is(existingCart.id, "cart-1");
-  is(existingCart.items.length, 1);
-  is(existingCart.items[0].product.tags[0], "oferta");
 
   // Carrito inexistente (lo crea)
   const newCart = await repo.findByUserId("usr-nuevo");
+
+  // Assert
+  is(existingCart.id, "cart-1");
+  is(existingCart.items.length, 1);
+  is(existingCart.items[0].product.tags[0], "oferta");
   is(newCart.id, "cart-nuevo");
   is(newCart.items.length, 0);
-  is(db.cart.create.calls.length, 1);
+  is(db.cart.create.mock.calls.length, 1);
 });
 
 test("UNIT-REPO-CART-02", "PrismaCartRepository addItem, update, remove, clear, findItemOwner y getReservedQuantities", async () => {
+  // Arrange
   const prodRow = {
     id: "prd-1",
     name: "Piso",
@@ -804,7 +845,7 @@ test("UNIT-REPO-CART-02", "PrismaCartRepository addItem, update, remove, clear, 
 
   const db = {
     cartItem: {
-      findUnique: spy(async (args: any) => {
+      findUnique: vi.fn(async (args: any) => {
         if (args.where?.id === "ci-existente") {
           return { id: "ci-existente", cartId: "cart-1", productId: "prd-1", quantity: 2, cart: { userId: "usr-1" } };
         }
@@ -813,7 +854,7 @@ test("UNIT-REPO-CART-02", "PrismaCartRepository addItem, update, remove, clear, 
         }
         return null;
       }),
-      update: spy(async (args: any) => ({
+      update: vi.fn(async (args: any) => ({
         id: args.where.id,
         quantity: args.data.quantity,
         cartId: "cart-1",
@@ -822,7 +863,7 @@ test("UNIT-REPO-CART-02", "PrismaCartRepository addItem, update, remove, clear, 
         createdAt: new Date(),
         updatedAt: new Date()
       })),
-      create: spy(async (args: any) => ({
+      create: vi.fn(async (args: any) => ({
         id: "ci-nuevo",
         cartId: args.data.cartId,
         productId: args.data.productId,
@@ -831,9 +872,9 @@ test("UNIT-REPO-CART-02", "PrismaCartRepository addItem, update, remove, clear, 
         createdAt: new Date(),
         updatedAt: new Date()
       })),
-      delete: spy(async () => ({})),
-      deleteMany: spy(async () => ({ count: 2 })),
-      findMany: spy(async () => [
+      delete: vi.fn(async () => ({})),
+      deleteMany: vi.fn(async () => ({ count: 2 })),
+      findMany: vi.fn(async () => [
         { productId: "prd-1", quantity: 3 },
         { productId: "prd-1", quantity: 2 }
       ])
@@ -842,36 +883,39 @@ test("UNIT-REPO-CART-02", "PrismaCartRepository addItem, update, remove, clear, 
 
   const repo = new PrismaCartRepository(db as any);
 
+  // Act
   // addItem acumulando en item existente
   const itemAcumulado = await repo.addItem("cart-1", "prd-1", 3);
-  is(itemAcumulado.quantity, 5);
 
   // addItem creando nueva línea
   const itemNuevo = await repo.addItem("cart-1", "prd-2", 4);
-  is(itemNuevo.id, "ci-nuevo");
-  is(itemNuevo.quantity, 4);
 
   // updateItemQuantity
   const itemActualizado = await repo.updateItemQuantity("ci-existente", 6);
-  is(itemActualizado.quantity, 6);
 
   // removeItem
   await repo.removeItem("ci-existente");
-  is(db.cartItem.delete.calls.length, 1);
 
   // clear
   await repo.clear("cart-1");
-  is(db.cartItem.deleteMany.calls.length, 1);
 
   // findItemOwner cuando existe
   const owner = await repo.findItemOwner("ci-existente");
-  is(owner, "usr-1");
 
   // findItemOwner cuando no existe
   const noOwner = await repo.findItemOwner("ci-inexistente");
-  is(noOwner, null);
 
   // getReservedQuantities
   const reservas = await repo.getReservedQuantities("cart-1", ["prd-1"]);
+
+  // Assert
+  is(itemAcumulado.quantity, 5);
+  is(itemNuevo.id, "ci-nuevo");
+  is(itemNuevo.quantity, 4);
+  is(itemActualizado.quantity, 6);
+  is(db.cartItem.delete.mock.calls.length, 1);
+  is(db.cartItem.deleteMany.mock.calls.length, 1);
+  is(owner, "usr-1");
+  is(noOwner, null);
   is(reservas["prd-1"], 5);
 });
