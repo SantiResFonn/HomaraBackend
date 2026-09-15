@@ -285,13 +285,20 @@ export function errorDeNext(next: Mock) {
   return next.mock.calls[0]?.[0];
 }
 
-/** Ejecuta `fn` con el reloj del sistema fijado en `iso` (timers falsos de Vitest). */
+/**
+ * Ejecuta `fn` con `Date.now()` fijado en `iso`.
+ *
+ * Se espía sólo `Date.now` y no se usan los timers falsos de Vitest: esos
+ * reemplazan la **clase** `Date` global, así que una fecha construida bajo el
+ * reloj falso queda con otro prototipo que una construida fuera, y
+ * `deepStrictEqual` las rechaza («same structure but not reference-equal»).
+ * El código bajo prueba sólo necesita `Date.now()`, así que alcanza con esto.
+ */
 export async function conRelojFijo<T>(iso: string, fn: () => T | Promise<T>): Promise<T> {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date(iso));
+  const reloj = vi.spyOn(Date, "now").mockReturnValue(new Date(iso).getTime());
   try {
     return await fn();
   } finally {
-    vi.useRealTimers();
+    reloj.mockRestore();
   }
 }
