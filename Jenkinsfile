@@ -1,4 +1,5 @@
-
+// Ejecuta un comando dentro de node:20-alpine SIN el plugin Docker Pipeline.
+// Jenkins corre en un contenedor, por eso se comparte su volumen con --volumes-from.
 def inNode(String cmd, String extraEnv = '') {
     sh """
         docker run --rm \\
@@ -24,7 +25,16 @@ pipeline {
 
     parameters {
         booleanParam(name: 'RUN_SONAR', defaultValue: true,
-                     description: 'Ejecutar análisis de SonarCloud')
+                     description: 'Ejecutar análisis en SonarQube local')
+        string(name: 'SONAR_HOST_URL',
+               defaultValue: 'http://host.docker.internal:9000',
+               description: 'URL del SonarQube local')
+        string(name: 'SONAR_DOCKER_NETWORK',
+               defaultValue: '',
+               description: 'Red de Docker donde corre SonarQube (opcional). Si se indica, usa SONAR_HOST_URL tipo http://<contenedor>:9000')
+        string(name: 'SONAR_TOKEN_CREDENTIAL_ID',
+               defaultValue: '',
+               description: 'ID de credencial (Secret text) con el token. Dejar vacío si no se usa token')
         booleanParam(name: 'PUSH_IMAGE', defaultValue: true,
                      description: 'Publicar la imagen en Docker Hub (solo rama main)')
     }
@@ -63,14 +73,23 @@ pipeline {
             }
         }
 
-        stage('SonarCloud') {
+        stage('SonarQube (local)') {
             when { expression { return params.RUN_SONAR } }
             steps {
-                // Credencial tipo "Secret text" con el token de SonarCloud
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    script {
-                        inNode('npx --yes @sonar/scan -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=$SONAR_TOKEN -Dsonar.scm.revision=$GIT_COMMIT',
-                               '-e SONAR_TOKEN -e GIT_COMMIT')
+                script {
+                    // host.docker.internal permite al contenedor de Node llegar al SonarQube del host
+                    def scan = "npx --yes @sonar/scan -Dsonar.host.url=${params.SONAR_HOST_URL} -Dsonar.scm.revision=\$GIT_COMMIT"
+                    def opts = '--add-host=host.docker.internal:host-gateway -e GIT_COMMIT'
+                    if (params.SONAR_DOCKER_NETWORK?.trim()) {
+                        opts += " --network ${params.SONAR_DOCKER_NETWORK.trim()}"
+                    }
+                    if (params.SONAR_TOKEN_CREDENTIAL_ID?.trim()) {
+                        // Solo si tu SonarQube exige autenticación: credencial tipo "Secret text"
+                        withCredentials([string(credentialsId: params.SONAR_TOKEN_CREDENTIAL_ID, variable: 'SONAR_TOKEN')]) {
+                            inNode(scan + ' -Dsonar.token=$SONAR_TOKEN', opts + ' -e SONAR_TOKEN')
+                        }
+                    } else {
+                        inNode(scan, opts)
                     }
                 }
             }
@@ -86,29 +105,26 @@ pipeline {
             steps {
                 script {
                     env.SHORT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                }
-                // Credencial tipo "Username with password" de Docker Hub
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials',
-                                                  usernameVariable: 'DOCKER_USER',
-                                                  passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        IMAGE="$DOCKER_USER/$IMAGE_NAME"
-                        docker build \
-                          -t "$IMAGE:$SHORT_SHA" \
-                          -t "$IMAGE:latest" .
-                    '''
-                    script {
-                        if (params.PUSH_IMAGE) {
-                            sh '''
-                                IMAGE="$DOCKER_USER/$IMAGE_NAME"
-                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                                docker push "$IMAGE:$SHORT_SHA"
-                                docker push "$IMAGE:latest"
+                    def buildArgs = ''
+                    if (params.PUSH_IMAGE) {
+                        // Credencial tipo "Username with password" de Docker Hub
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials',
+                                                          usernameVariable: 'DOCKER_USER',
+                                                          passwordVariable: 'DOCKER_PASS')]) {
+                            sh """
+                                IMAGE="\$DOCKER_USER/\$IMAGE_NAME"
+                                docker build ${buildArgs} -t "\$IMAGE:\$SHORT_SHA" -t "\$IMAGE:latest" .
+                                echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin
+                                docker push "\$IMAGE:\$SHORT_SHA"
+                                docker push "\$IMAGE:latest"
                                 docker logout
-                            '''
-                        } else {
-                            echo 'PUSH_IMAGE=false: se omite la publicación en Docker Hub.'
+                            """
                         }
+                    } else {
+                        echo 'PUSH_IMAGE=false: se construye la imagen solo en local, sin publicar.'
+                        sh """
+                            docker build ${buildArgs} -t "\$IMAGE_NAME:\$SHORT_SHA" -t "\$IMAGE_NAME:latest" .
+                        """
                     }
                 }
             }
@@ -126,4 +142,3 @@ pipeline {
         cleanup { echo 'Pipeline finalizado.' }
     }
 }
-
