@@ -26,15 +26,12 @@ pipeline {
     parameters {
         booleanParam(name: 'RUN_SONAR', defaultValue: true,
                      description: 'Ejecutar análisis en SonarQube local')
-        string(name: 'SONAR_HOST_URL',
-               defaultValue: 'http://host.docker.internal:9000',
-               description: 'URL del SonarQube local')
+        string(name: 'SONARQUBE_JENKINS_SERVER',
+               defaultValue: 'SonarQubeLocal',
+               description: 'Nombre del servidor SonarQube configurado en Manage Jenkins > System > SonarQube servers')
         string(name: 'SONAR_DOCKER_NETWORK',
                defaultValue: '',
-               description: 'Red de Docker donde corre SonarQube (opcional). Si se indica, usa SONAR_HOST_URL tipo http://<contenedor>:9000')
-        string(name: 'SONAR_TOKEN_CREDENTIAL_ID',
-               defaultValue: '',
-               description: 'ID de credencial (Secret text) con el token. Dejar vacío si no se usa token')
+               description: 'Red de Docker donde corre SonarQube (opcional, ej. devops-net)')
         booleanParam(name: 'PUSH_IMAGE', defaultValue: true,
                      description: 'Publicar la imagen en Docker Hub (solo rama main)')
     }
@@ -77,20 +74,27 @@ pipeline {
             when { expression { return params.RUN_SONAR } }
             steps {
                 script {
-                    // host.docker.internal permite al contenedor de Node llegar al SonarQube del host
-                    def scan = "npx --yes @sonar/scan -Dsonar.host.url=${params.SONAR_HOST_URL} -Dsonar.scm.revision=\$GIT_COMMIT"
-                    def opts = '--add-host=host.docker.internal:host-gateway -e GIT_COMMIT'
-                    if (params.SONAR_DOCKER_NETWORK?.trim()) {
-                        opts += " --network ${params.SONAR_DOCKER_NETWORK.trim()}"
-                    }
-                    if (params.SONAR_TOKEN_CREDENTIAL_ID?.trim()) {
-                        // Solo si tu SonarQube exige autenticación: credencial tipo "Secret text"
-                        withCredentials([string(credentialsId: params.SONAR_TOKEN_CREDENTIAL_ID, variable: 'SONAR_TOKEN')]) {
-                            inNode(scan + ' -Dsonar.token=$SONAR_TOKEN', opts + ' -e SONAR_TOKEN')
+                    // withSonarQubeEnv toma la URL y el token del servidor configurado en Jenkins
+                    // (Manage Jenkins > System > SonarQube servers) y los deja en SONAR_HOST_URL / SONAR_AUTH_TOKEN.
+                    // Es obligatorio para que la siguiente etapa (Quality Gate) funcione.
+                    withSonarQubeEnv(params.SONARQUBE_JENKINS_SERVER) {
+                        def scan = 'npx --yes @sonar/scan -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.token=$SONAR_AUTH_TOKEN -Dsonar.scm.revision=$GIT_COMMIT'
+                        def opts = '--add-host=host.docker.internal:host-gateway -e GIT_COMMIT -e SONAR_HOST_URL -e SONAR_AUTH_TOKEN'
+                        if (params.SONAR_DOCKER_NETWORK?.trim()) {
+                            opts += " --network ${params.SONAR_DOCKER_NETWORK.trim()}"
                         }
-                    } else {
                         inNode(scan, opts)
                     }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when { expression { return params.RUN_SONAR } }
+            steps {
+                // Requiere el plugin "SonarQube Scanner" y el webhook configurado en SonarQube
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
